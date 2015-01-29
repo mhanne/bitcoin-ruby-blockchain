@@ -1,0 +1,6 @@
+module Bitcoin
+  module Blockchain
+    VERSION = "0.0.1"
+  end
+end
+

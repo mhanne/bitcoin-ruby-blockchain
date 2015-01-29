@@ -1,0 +1,126 @@
+= Bitcoin-ruby-blockchain
+
+This is a bitcoin blockchain storage based on bitcoin-ruby with support for
+several different backends and database adapters.
+
+It also provides {Bitcoin::Blockchain::Validation Validation} functionality to ensure
+that only valid data is stored.
+
+
+== Backends
+
+The +:archive+ and +:utxo+ backends can both use any SQL database supported by sequel.
+
+
+=== Archive
+
+The {Bitcoin::Blockchain::Backends::Archive Archive} backend stores a complete,
+fully-indexed blockchain.
+
+This backend produces a very large DB, but holds the data in a completely normalized
+schema and can be queried arbitrarily.
+
+Postgres is the recommended adapter since it is the most optimized.
+
+Webbtc.com[http://webbtc.com] is based on this backend, and you can grab a postgres
+dump from http://dumps.webbtc.com to get started more quickly (hours instead of days).
+
+
+=== Utxo
+
+The {Bitcoin::Blockchain::Backends::Utxo Utxo} backend stores only the utxos
+("Unspent TX Outputs") needed to validate the blockchain on its own.
+
+This backend produces a much smaller DB than the `:archive` backend, but can only be
+queried for addresses it has been told to watch previously.
+
+
+=== Configuration
+
+Specify which sequel adapter and database to use like this:
+
+ sqlite:/                                          # sqlite in-memory database
+ sqlite://bitcoin.db                               # sqlite db in current directory
+ sqlite:///tmp/bitcoin.db                          # sqlite with absolute path
+ postgres:/bitcoin                                 # local postgres database
+ postgres://<user>:<pass>@<host>:<port>/<database> # remote postgres db with authentication
+
+
+== Installation
+
+We assume you already have a ruby 1.9 or 2.0 compatible interpreter and rubygems environment.
+
+ gem install bitcoin-ruby-blockchain
+
+Or add it to your Gemfile and
+
+ require 'bitcoin/blockchain'
+
+
+== Usage
+
+Initialize a blockchain with the desired backend and DB adapter:
+ # use :utxo backend with in-memory sqlite DB
+ chain = Bitcoin::Blockchain::Utxo.new(db: "sqlite:/")
+ 
+ # use :archive backend with local postgres DB
+ chain = Bitcoin::Blockchain::Archive.new(db: "postgres:/bitcoin")
+
+Give it a {Bitcoin::Protocol::Block Block} to store:
+
+ chain.store_block(block) #=> [height, branch]
+
+And query objects from the blockchain:
+
+ chain.get_head   #=> current best block
+ chain.get_height #=> height of current best block
+ block = chain.get_block(block_hash)
+ tx = chain.get_tx(tx_hash)
+
+See {Bitcoin::Blockchain::Backends::Base} for a complete list of methods common to all backends.
+
+These return {Bitcoin::Blockchain::Models} objects, which are like {Bitcoin::Protocol}
+objects with extra features to query related data from the blockchain, like so:
+
+ block.get_prev_block  #=> the previous block this one is based upon
+ block.get_next_block  #=> the next block based upon this one
+ tx.get_block          #=> the block this tx is in
+ tx.confirmations      #=> number of blocks in the main chain that confirm this tx
+ tx.in[0].get_prev_out #=> the previous output that is spent by this input
+ tx.out[0].get_next_in #=> the next input that is spending this output
+
+
+== Documentation
+
+Always trying to improve, any help appreciated! If anything is unclear to you, let us know!
+
+Documentation is generated using yardoc:
+
+ rake doc
+
+The specs are also a good place to see how things are supposed to work.
+
+
+== Specs
+
+The specs can be run with
+
+ rake
+
+or, if you want to run a single spec
+
+ rspec spec/blockchain/models_spec.rb
+
+Coverage information is automatically generated and can be found in +coverage/+ after
+the test run.
+
+
+== Contributing
+
+Any help or feedback is greatly appreciated! Just open an issue, submit a pull-request,
+or come to #bitcoin-ruby on irc.freenode.net if you want to chat.
+
+
+== License
+
+This software is licensed under the terms of the MIT license. See {file:COPYING} for details.
