@@ -22,6 +22,10 @@ module Bitcoin::Blockchain
   def self.log; @log; end
 
   def self.create_store(backend, config)
+    if backend.to_sym == :sequel
+      backend = :archive
+      log.warn { "The 'sequel' backend has been renamed to 'archive', please adjust your config." }
+    end
     Backends.const_get(backend.capitalize).new(config)
   end
 

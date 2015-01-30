@@ -1,4 +1,4 @@
-# encoding: ascii-8bit
+require 'sequel'
 
 module Bitcoin::Blockchain::Backends
   class Dummy < Base

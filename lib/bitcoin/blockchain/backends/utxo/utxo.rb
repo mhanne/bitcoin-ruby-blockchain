@@ -1,5 +1,4 @@
-Bitcoin.require_dependency :sequel, message:
-  "Note: You will also need an adapter for your database like sqlite3, mysql2, postgresql"
+require 'sequel'
 
 module Bitcoin::Blockchain::Backends
 
