@@ -417,7 +417,7 @@ module Bitcoin::Blockchain::Backends
             next  unless file =~ /^blk(\d+)\.dat$/
             @import_file_num = $1.to_i
             next  if @resume && @resume[0] && @resume[0] > @import_file_num
-            import(File.join(filename, file), max_depth)
+            import(File.join(filename, file), opts)
             File.write(opts[:resume_file], [@import_file_num, 0].join("|"))
           end
         else
