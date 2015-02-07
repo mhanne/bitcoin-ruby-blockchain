@@ -304,6 +304,11 @@ module Bitcoin::Blockchain::Backends
         .where(tx_id: tx_id, chain: MAIN).first[:blk_id] rescue nil
     end
 
+    # get depth of block with given +blk_id+
+    def get_depth_for_block_id(blk_id)
+      @db[:blk][id: blk_id][:depth]
+    end
+
     # get transaction for given +tx_hash+
     def get_tx(tx_hash)
       wrap_tx(@db[:tx][hash: tx_hash.htb.blob])

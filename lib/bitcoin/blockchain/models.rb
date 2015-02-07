@@ -72,8 +72,8 @@ module Bitcoin::Blockchain::Models
 
     # get the number of blocks that confirm this tx in the main chain
     def confirmations
-      return 0  unless get_block
-      @store.get_head.depth - get_block.depth + 1
+      return 0  unless @blk_id
+      @store.get_depth - @store.get_depth_for_block_id(@blk_id) + 1
     end
 
     def total_out
