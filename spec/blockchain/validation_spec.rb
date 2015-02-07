@@ -92,6 +92,13 @@ Bitcoin.network = :regtest
       b.tx[0].in[0].script_sig = "\x01" * 101 }
   end
 
+  it "should verify coinbase value" do
+    block = create_block @block1.hash, false, [
+      ->(tx) { create_tx(tx, @block1.tx.first, 0, [[50e8, @key]]) } ], @key, 51e8
+
+    check_block(block, [:coinbase_value, [51e8, 50e8, 0]])
+  end
+
   it "10. Verify Merkle hash" do
     check_block(@block, [:mrkl_root, ["00"*32, @block.mrkl_root.reverse_hth]]) {|b|
       b.mrkl_root = "\x00" * 32 }

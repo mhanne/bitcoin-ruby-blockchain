@@ -112,7 +112,7 @@ module Bitcoin::Blockchain::Validation
         val = tx_validators[idx]
         fees += t.in.map.with_index {|i, idx|
           val.prev_txs[idx].out[i.prev_out_index].value rescue 0
-        }.inject(:+)
+        }.inject(:+) - t.out.map(&:value).inject(:+)
         val.clear_cache # memory optimization on large coinbases, see testnet3 block 4110
       end
       coinbase_output = block.tx[0].out.map(&:value).inject(:+)
