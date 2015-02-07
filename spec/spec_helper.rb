@@ -3,6 +3,7 @@ $: << File.expand_path(File.join(File.dirname(__FILE__), '/../lib'))
 
 require 'bundler'
 Bundler.setup
+
 require 'simplecov'
 SimpleCov.start
 
@@ -13,6 +14,7 @@ end
 require 'pry-byebug'
 require 'bitcoin'
 require 'bitcoin/blockchain'
+require 'sequel'
 
 begin
   require 'minitest'

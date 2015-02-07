@@ -3,3 +3,4 @@
 /doc
 /coverage
 /*.gem
+/spec/fixtures/fake_chain/*
