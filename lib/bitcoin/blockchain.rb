@@ -17,6 +17,7 @@ module Bitcoin::Blockchain
 
   autoload :Backends, "bitcoin/blockchain/backends"
   autoload :Models, "bitcoin/blockchain/models"
+  autoload :Mempool, "bitcoin/blockchain/mempool"
 
   @log = Bitcoin::Logger.create(:storage)
   def self.log; @log; end
@@ -32,4 +33,4 @@ module Bitcoin::Blockchain
 end
 
 # TODO: someday sequel will support #blob directly and #to_sequel_blob will be gone
-class String; def blob; to_sequel_blob; end; end
+class String; def blob; ::Sequel::SQL::Blob.new(self); end; end

@@ -25,9 +25,11 @@ module Bitcoin::Blockchain::Backends
       # possible address types
       ADDRESS_TYPES = [:pubkey_hash, :script_hash]
 
-      DEFAULT_CONFIG = {}
+      DEFAULT_CONFIG = {
+        mempool: {}, # use Mempool::DEFAULT_CONFIG
+      }
 
-      attr_reader :log
+      attr_reader :log, :mempool
 
       attr_accessor :config
 
@@ -47,6 +49,8 @@ module Bitcoin::Blockchain::Backends
       end
 
       def init_store_connection
+        mempool_db = @db && @db.respond_to?(:uri) ? @db.uri : "sqlite:/"
+        @mempool = Bitcoin::Blockchain::Mempool.new(self, { db: mempool_db }.merge(@config[:mempool]))
       end
 
       # name of the storage backend currently in use ("sequel" or "utxo")
@@ -132,6 +136,7 @@ module Bitcoin::Blockchain::Backends
             end
             res = persist_block(blk, MAIN, new_height, prev_block.work)
             push_notification(:block, [blk, *res])
+            @mempool.confirmed_txs(blk.tx.map(&:hash))  if @mempool
             return res
           # if prev_block is below head in the main chain, this block starts a new side chain
           else

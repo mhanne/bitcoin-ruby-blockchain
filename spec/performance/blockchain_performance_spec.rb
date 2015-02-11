@@ -28,9 +28,9 @@ require 'benchmark'
   describe "#{backend_name}:#{adapter_name}" do
 
     before do
-      next  unless @store = setup_db(backend_name, adapter_name, conf)
+      next  unless @store = setup_db(backend_name, adapter_name, { mempool: { require_fee: false }}.merge(conf))
       @store.log.level = :warn
-      @fake_chain = FakeBlockchain.new 10, block_size: 1_000_000
+      @fake_chain = FakeBlockchain.new 10, block_size: 1_000
     end
 
     after { close_db @store }
@@ -56,6 +56,30 @@ require 'benchmark'
         chain.should == 0
       end
     end
+
+    it "insert transactions into mempool" do
+      puts
+      res = []
+      @fake_chain.blocks do |blk,i|
+        res << Benchmark.measure do |b|
+          blk.tx[1..-1].each.with_index {|tx, i| @store.mempool.add(tx).should == i+1 }
+        end
+        @store.store_block(blk)
+      end
+      puts res.inject(:+).format
+    end
+
+    it "store block with transactions in mempool" do
+      puts
+      res = []
+      @fake_chain.blocks do |blk,i|
+        blk.tx[1..-1].each.with_index {|tx, i| @store.mempool.add(tx).should == i+1 }
+        res << Benchmark.measure do |b|
+          @store.new_block(blk).should == [i, 0]
+         end
+       end
+      puts res.inject(:+).format
+     end
 
   end
 end

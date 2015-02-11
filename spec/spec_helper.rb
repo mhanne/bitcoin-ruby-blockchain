@@ -42,6 +42,7 @@ end
 
 def close_db store
   store.db.disconnect
+  store.mempool.db.disconnect
 end
 
 def destroy_db db, uri, conf
@@ -52,6 +53,9 @@ def destroy_db db, uri, conf
     db_name = uri.split("/").last
     port = uri.split("/")[-2].scan(/\:(\d+)$/)[0]
     port = port[0].to_i  if port
+
+    cmd = "SELECT pg_terminate_backend(pg_stat_activity.procpid) FROM pg_stat_activity WHERE pg_stat_activity.datname = '#{db_name}' AND procpid <> pg_backend_pid();"
+    `echo "#{cmd}" | psql #{port ? "-p #{port}" : ""}`
     `echo 'DROP DATABASE #{db_name}; CREATE DATABASE #{db_name};' | psql #{port ? "-p #{port}" : ""}`
   when :mysql
     db_name = uri.split("/").last

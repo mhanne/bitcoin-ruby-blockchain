@@ -25,6 +25,7 @@ module Bitcoin::Blockchain::Backends
         adapter = SEQUEL_ADAPTERS[@config[:db].split(":").first] rescue nil
         Bitcoin.require_dependency(adapter, gem: adapter)  if adapter
         connect
+        super
       end
 
       # connect to database

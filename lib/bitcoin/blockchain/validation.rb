@@ -33,7 +33,7 @@ module Bitcoin::Blockchain::Validation
   using ArrayExtensions
 
   class Block
-    attr_accessor :block, :store, :prev_block, :error
+    attr_accessor :block, :store, :prev_block, :error, :mempool_txs
 
     RULES = {
       syntax: [:hash, :tx_list, :bits, :max_timestamp, :coinbase, :coinbase_scriptsig, :mrkl_root, :transactions_syntax],
@@ -127,9 +127,13 @@ module Bitcoin::Blockchain::Validation
       block.tx[1..-1].map.with_index do |t, idx|
         val = tx_validators[idx]
         fees += t.in.map.with_index {|i, idx|
-          val.prev_txs[idx].out[i.prev_out_index].value rescue 0
+          if val
+            val.prev_txs[idx].out[i.prev_out_index].value rescue 0
+          else
+            @mempool_txs[t.hash].input_value
+          end
         }.inject(:+) - t.out.map(&:value).inject(:+)
-        val.clear_cache # memory optimization on large coinbases, see testnet3 block 4110
+        val.clear_cache if val # memory optimization on large coinbases, see testnet3 block 4110
       end
       coinbase_output = block.tx[0].out.map(&:value).inject(:+)
       coinbase_output <= reward + fees || [coinbase_output, reward, fees]
@@ -153,7 +157,7 @@ module Bitcoin::Blockchain::Validation
 
     # check that timestamp is newer than the median of the last 11 blocks
     def min_timestamp
-      return true  if (d = store.height) <= 11
+      return true  if store.height <= 11
       first = store.db[:blk][hash: block.prev_block_hash.reverse.blob]
       times = [first[:time]]
       (10).times { first = store.db[:blk][hash: first[:prev_hash].blob]
@@ -171,6 +175,7 @@ module Bitcoin::Blockchain::Validation
       return false if block.tx.map(&:in).flatten.map {|i| [i.prev_out, i.prev_out_index] }.uniq! != nil
 
       tx_validators.all?{|v|
+        next true  unless v
         begin
           v.validate(rules: [:syntax], raise_errors: true)
         rescue ValidationError
@@ -183,6 +188,7 @@ module Bitcoin::Blockchain::Validation
     # Run all context checks on transactions
     def transactions_context
       tx_validators.all?{|v|
+        next true  unless v
         begin
           v.validate(rules: [:context], raise_errors: true)
         rescue ValidationError
@@ -194,7 +200,15 @@ module Bitcoin::Blockchain::Validation
 
     # Get validators for all tx objects in the current block
     def tx_validators
-      @tx_validators ||= block.tx[1..-1].map {|tx| tx.validator(store, block, self)}
+      @mempool_txs ||= {}
+      @tx_validators ||= block.tx[1..-1].map {|tx|
+        if mempool_tx = @store.mempool.get(tx.hash, :accepted)
+          @mempool_txs[tx.hash] = mempool_tx
+          # puts "Accepted mempool tx #{tx.hash} into block"
+          next
+        end
+        tx.validator(store, block, self) }
+      # @tx_validators ||= block.tx[1..-1].map {|tx| tx.validator(store, block, self)}
     end
 
     # Fetch all prev_txs that will be needed for validation
@@ -246,7 +260,8 @@ module Bitcoin::Blockchain::Validation
   end
 
   class Tx
-    attr_accessor :tx, :store, :error, :block_validator
+
+    attr_accessor :tx, :store, :error, :block_validator, :mempool
 
     RULES = {
       syntax: [:hash, :lists, :max_size, :output_values, :duplicate_inputs, :coinbase_input, :lock_time, :standard],
@@ -400,12 +415,28 @@ module Bitcoin::Blockchain::Validation
     end
 
     # collect prev_txs needed to verify the inputs of this tx.
-    # only returns tx that are in a block in the main chain or the current block.
+    # only returns tx that are in a block in the main chain, or either in the current block,
+    # (if the tx is valid inside of a block) or the mempool (if the tx is accepted)
     def prev_txs
       @prev_txs ||= tx.in.map {|i|
-        prev_tx = block_validator ? block_validator.prev_txs_hash[i.prev_out_hash.reverse_hth] : store.tx(i.prev_out_hash.reverse_hth)
-        next prev_tx if prev_tx && prev_tx.blk_id # blk_id is set only if it's in the main chain
-        @block.tx.find {|t| t.binary_hash == i.prev_out_hash } if @block
+        prev_hash = i.prev_out_hash.reverse.hth
+
+        # when mempool validation, check that the prev out hasn't been spent in mempool
+        next nil if @mempool && @mempool.spent?(prev_hash, i.prev_out_index)
+
+        # if there is a block_validator given, get the prev_tx from there, otherwise from the store
+        prev_tx = block_validator ? block_validator.prev_txs_hash[prev_hash] : store.get_tx(prev_hash)
+
+        # return tx if it was found in main chain (blk_id is only set for main-chain blocks)
+        next prev_tx if prev_tx && prev_tx.blk_id
+
+        # if no tx was found in the prev block, it must be either in mempool,
+        # or in the block we're currently validating
+        if @mempool
+          next prev_tx if (prev_tx = @mempool.get(prev_hash)) && !prev_tx.doublespent?
+        else
+          @block.tx.find {|t| t.binary_hash == i.prev_out_hash } if @block
+        end
       }.compact
     end
 

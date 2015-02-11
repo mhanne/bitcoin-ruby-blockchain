@@ -4,3 +4,4 @@
 /coverage
 /*.gem
 /spec/fixtures/fake_chain/*
+/spec/tmp
