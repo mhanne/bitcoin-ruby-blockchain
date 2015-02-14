@@ -12,13 +12,11 @@ require 'benchmark'
 
   next  unless storage = setup_db(*options)
 
-  def benchmark
-    puts
+  def benchmark after_cb = nil
     res = []
     @fake_chain.blocks do |blk,i|
-      res << Benchmark.measure do
-        yield blk, i
-      end
+      res << Benchmark.measure { yield blk, i }
+      after_cb.call(blk, i)  if after_cb
     end
     puts res.inject(:+).format
   end
@@ -30,6 +28,12 @@ require 'benchmark'
       @store.reset
       @store.log.level = :warn
       @fake_chain = FakeBlockchain.new 10, block_size: 100_000
+    end
+
+    it "validate block" do
+      benchmark(->(b, i) { @store.new_block(b) }) do |blk, i|
+        blk.validator(@store).validate.should == (i > 0) # genesis isn't validated
+      end
     end
 
     it "store block without validation" do
