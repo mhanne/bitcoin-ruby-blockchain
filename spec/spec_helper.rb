@@ -8,6 +8,7 @@ require 'simplecov'
 SimpleCov.start
 
 RSpec.configure do |config|
+  config.fail_fast = true
   config.expect_with(:rspec) {|c| c.syntax = [:should, :expect] }
 end
 

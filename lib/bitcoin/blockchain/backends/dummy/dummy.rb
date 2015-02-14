@@ -14,9 +14,9 @@ module Bitcoin::Blockchain::Backends
       @blk, @tx = [], {}
     end
 
-    def persist_block(blk, chain, depth, prev_work = 0)
-      return [depth, chain]  unless blk && chain == 0
-      if block = get_block(blk.hash)
+    def persist_block(blk, chain, height, prev_work = 0)
+      return [height, chain]  unless blk && chain == 0
+      if block = block(blk.hash)
         log.info { "Block already stored; skipping" }
         return false
       end
@@ -24,8 +24,8 @@ module Bitcoin::Blockchain::Backends
       blk.tx.each {|tx| store_tx(tx) }
       @blk << blk
 
-      log.info { "NEW HEAD: #{blk.hash} DEPTH: #{get_depth}" }
-      [depth, chain]
+      log.info { "NEW HEAD: #{blk.hash} HEIGHT: #{height}" }
+      [height, chain]
     end
 
     def store_tx(tx, validate = true)
@@ -37,74 +37,90 @@ module Bitcoin::Blockchain::Backends
     end
 
     def has_block(blk_hash)
-      !!get_block(blk_hash)
+      !!block(blk_hash)
     end
 
     def has_tx(tx_hash)
-      !!get_tx(tx_hash)
+      !!tx(tx_hash)
     end
 
-    def get_depth
+    def height
       @blk.size - 1
     end
+    alias :get_depth :height
 
-    def get_head
+    def head
       wrap_block(@blk[-1])
     end
+    alias :get_head :head
 
-    def get_block_by_depth(depth)
-      wrap_block(@blk[depth])
+    def block_at_height(height)
+      wrap_block(@blk[height])
     end
+    alias :get_block_by_depth :block_at_height
 
-    def get_block_by_prev_hash(hash)
+
+    def block_by_prev_hash(hash)
       wrap_block(@blk.find {|blk| blk.prev_block == [hash].pack("H*").reverse})
     end
+    alias :get_block_by_prev_hash :block_by_prev_hash
 
-    def get_block(blk_hash)
+    def block(blk_hash)
       wrap_block(@blk.find {|blk| blk.hash == blk_hash})
     end
+    alias :get_block :block
 
-    def get_block_by_id(blk_id)
+    def block_by_id(blk_id)
       wrap_block(@blk[blk_id])
     end
+    alias :get_block_by_id :block_by_id
 
-    def get_block_by_tx(tx_hash)
+    def block_by_tx_hash(tx_hash)
       wrap_block(@blk.find {|blk| blk.tx.map(&:hash).include?(tx_hash) })
     end
+    alias :block_by_tx :block_by_tx_hash
+    alias :get_block_by_tx :block_by_tx_hash
 
-    def get_idx_from_tx_hash(tx_hash)
-      return nil unless tx = get_tx(tx_hash)
-      return nil unless blk = tx.get_block
+    def idx_from_tx_hash(tx_hash)
+      return nil unless tx = tx(tx_hash)
+      return nil unless blk = tx.block
       blk.tx.index tx
     end
+    alias :get_idx_from_tx_hash :idx_from_tx_hash
 
-    def get_tx(tx_hash)
+    def tx(tx_hash)
       transaction = @tx[tx_hash]
       return nil  unless transaction
       wrap_tx(transaction)
     end
+    alias :get_tx :tx
 
-    def get_tx_by_id(tx_id)
+    def tx_by_id(tx_id)
       wrap_tx(@tx[tx_id])
     end
+    alias :get_tx_by_id :tx_by_id
 
-    def get_txin_for_txout(tx_hash, txout_idx)
-      txin = @tx.values.map(&:in).flatten.find {|i| i.prev_out_index == txout_idx &&
+    def txin_for_txout(tx_hash, txout_idx)
+      txin = @tx.values.map(&:in).flatten.find {|i|
+        i.prev_out_index == txout_idx &&
         i.prev_out == [tx_hash].pack("H*").reverse }
       wrap_txin(txin)
     end
+    alias :get_txin_for_txout :txin_for_txout
 
-    def get_txout_for_txin(txin)
-      return nil unless tx = @tx[txin.prev_out.reverse_hth]
+    def txout_for_txin(txin)
+      return nil unless tx = @tx[txin.prev_out_hash.reverse_hth]
       wrap_tx(tx).out[txin.prev_out_index]
     end
+    alias :get_txout_for_txin :txout_for_txin
 
-    def get_txouts_for_pk_script(script)
+    def txouts_for_pk_script(script)
       txouts = @tx.values.map(&:out).flatten.select {|o| o.pk_script == script}
       txouts.map {|o| wrap_txout(o) }
     end
+    alias :get_txouts_for_pk_script :txouts_for_pk_script
 
-    def get_txouts_for_hash160(hash160, type = :hash160, unconfirmed = false)
+    def txouts_for_hash160(hash160, type = :hash160, unconfirmed = false)
       @tx.values.map(&:out).flatten.map {|o|
         o = wrap_txout(o)
         if o.parsed_script.is_multisig?
@@ -114,17 +130,18 @@ module Bitcoin::Blockchain::Backends
         end
       }.compact
     end
+    alias :get_txouts_for_hash160 :txouts_for_hash160
 
     def wrap_block(block)
       return nil  unless block
-      data = { id: @blk.index(block), depth: @blk.index(block),
+      data = { id: @blk.index(block), height: @blk.index(block),
         work: @blk.index(block), chain: MAIN, size: block.size }
       blk = Bitcoin::Blockchain::Models::Block.new(self, data)
-      [:ver, :prev_block, :mrkl_root, :time, :bits, :nonce].each do |attr|
+      [:ver, :prev_block_hash, :mrkl_root, :time, :bits, :nonce].each do |attr|
         blk.send("#{attr}=", block.send(attr))
       end
       block.tx.each do |tx|
-        blk.tx << get_tx(tx.hash)
+        blk.tx << tx(tx.hash)
       end
       blk.recalc_block_hash
       blk
@@ -133,8 +150,7 @@ module Bitcoin::Blockchain::Backends
     def wrap_tx(transaction)
       return nil  unless transaction
       blk = @blk.find{|b| b.tx.include?(transaction)}
-      data = { id: transaction.hash, blk_id: @blk.index(blk),
-        size: transaction.size }
+      data = { id: transaction.hash, blk_id: @blk.index(blk), size: transaction.size }
       tx = Bitcoin::Blockchain::Models::Tx.new(self, data)
       tx.ver = transaction.ver
       tx.lock_time = transaction.lock_time

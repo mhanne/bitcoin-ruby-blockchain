@@ -58,7 +58,7 @@ module Bitcoin::Blockchain::Validation
     # optionally passing the +prev_block+ for optimization.
     def initialize block, store, prev_block = nil
       @block, @store, @error = block, store, nil
-      @prev_block = prev_block || store.get_block(block.prev_block.reverse_hth)
+      @prev_block = prev_block || store.block(block.prev_block_hash.reverse_hth)
     end
 
     # check that block hash matches header
@@ -106,7 +106,7 @@ module Bitcoin::Blockchain::Validation
 
     # check that coinbase value is valid; no more than reward + fees
     def coinbase_value
-      reward = ((50.0 / (2 ** (store.get_depth / Bitcoin::REWARD_DROP.to_f).floor)) * 1e8).to_i
+      reward = ((50.0 / (2 ** (store.height / Bitcoin::REWARD_DROP.to_f).floor)) * 1e8).to_i
       fees = 0
       block.tx[1..-1].map.with_index do |t, idx|
         val = tx_validators[idx]
@@ -126,7 +126,7 @@ module Bitcoin::Blockchain::Validation
     end
 
     def prev_hash
-      @prev_block && @prev_block.hash == block.prev_block.reverse_hth
+      @prev_block && @prev_block.hash == block.prev_block_hash.reverse_hth
     end
 
     # check that bits satisfy required difficulty
@@ -137,9 +137,8 @@ module Bitcoin::Blockchain::Validation
 
     # check that timestamp is newer than the median of the last 11 blocks
     def min_timestamp
-      return true  if store.get_depth <= 11
-      d = store.get_depth
-      first = store.db[:blk][hash: block.prev_block.reverse.blob]
+      return true  if (d = store.height) <= 11
+      first = store.db[:blk][hash: block.prev_block_hash.reverse.blob]
       times = [first[:time]]
       (10).times { first = store.db[:blk][hash: first[:prev_hash].blob]
         times << first[:time] }
@@ -187,7 +186,7 @@ module Bitcoin::Blockchain::Validation
     def prev_txs_hash
       @prev_tx_hash ||= (
         inputs = block.tx[1..-1].map {|tx| tx.in }.flatten
-        txs = store.get_txs(inputs.map{|i| i.prev_out.reverse_hth })
+        txs = store.get_txs(inputs.map{|i| i.prev_out_hash.reverse_hth })
         Hash[*txs.map {|tx| [tx.hash, tx] }.flatten]
       )
     end
@@ -195,18 +194,18 @@ module Bitcoin::Blockchain::Validation
     # Fetch all prev_outs that already have a next_in, i.e. are already spent.
     def spent_outs_txins
       @spent_outs_txins ||= (
-        next_ins = store.get_txins_for_txouts(block.tx[1..-1].map(&:in).flatten.map.with_index {|txin, idx| [txin.prev_out.reverse_hth, txin.prev_out_index] })
+        next_ins = store.txins_for_txouts(block.tx[1..-1].map(&:in).flatten.map.with_index {|txin, idx| [txin.prev_out_hash.reverse_hth, txin.prev_out_index] })
         # Only returns next_ins that are in blocks in the main chain
-        next_ins.select {|i| store.get_block_id_for_tx_id(i.tx_id) }
+        next_ins.select {|i| store.block_id_for_tx_id(i.tx_id) }
       )
     end
 
     def next_bits_required
       retarget = (Bitcoin.network[:retarget_interval] || Bitcoin::RETARGET_INTERVAL)
-      index = (prev_block.depth + 1) / retarget  
+      index = (prev_block.height + 1) / retarget
       max_target = Bitcoin.decode_compact_bits(Bitcoin.network[:proof_of_work_limit]).to_i(16)
       return Bitcoin.network[:proof_of_work_limit]  if index == 0
-      return prev_block.bits  if (prev_block.depth + 1) % retarget != 0
+      return prev_block.bits  if (prev_block.height + 1) % retarget != 0
       last = store.db[:blk][hash: prev_block.hash.htb.blob]
       first = store.db[:blk][hash: last[:prev_hash].blob]
       (retarget - 2).times { first = store.db[:blk][hash: first[:prev_hash].blob] }
@@ -329,8 +328,8 @@ module Bitcoin::Blockchain::Validation
         prev_txs[idx].out[txin.prev_out_index] rescue false }
       return true  if prev_txs.size == tx.in.size && missing.empty?
 
-      missing.each {|i| store.log.warn { "prev out #{i.prev_out.reverse_hth}:#{i.prev_out_index} missing" } }
-      missing.map {|i| [i.prev_out.reverse_hth, i.prev_out_index] }
+      missing.each {|i| store.log.warn { "prev out #{i.prev_out_hash.reverse_hth}:#{i.prev_out_index} missing" } }
+      missing.map {|i| [i.prev_out_hash.reverse_hth, i.prev_out_index] }
     end
 
     # TODO: validate coinbase maturity
@@ -347,17 +346,17 @@ module Bitcoin::Blockchain::Validation
       return block_validator.spent_outs_txins.empty? if block_validator
 
       # find all spent txouts
-      next_ins = store.get_txins_for_txouts(tx.in.map.with_index {|txin, idx| [txin.prev_out.reverse_hth, txin.prev_out_index] })
+      next_ins = store.txins_for_txouts(tx.in.map.with_index {|txin, idx| [txin.prev_out_hash.reverse_hth, txin.prev_out_index] })
 
       # no txouts found spending these txins, we can safely return true
       return true if next_ins.empty?
 
       # there were some txouts spending these txins, verify that they are not on the main chain
-      next_ins.select! {|i| i.get_tx.blk_id } # blk_id is only set for tx in the main chain
+      next_ins.select! {|i| i.tx.blk_id } # blk_id is only set for tx in the main chain
       return true if next_ins.empty?
 
       # now we know some txouts are already spent, return tx_idxs for debugging purposes
-      return next_ins.map {|i| i.get_prev_out.tx_idx }
+      return next_ins.map {|i| i.prev_out.tx_idx }
     end
 
     # check that the total input value doesn't exceed MAX_MONEY
@@ -381,7 +380,7 @@ module Bitcoin::Blockchain::Validation
     # only returns tx that are in a block in the main chain or the current block.
     def prev_txs
       @prev_txs ||= tx.in.map {|i|
-        prev_tx = block_validator ? block_validator.prev_txs_hash[i.prev_out.reverse_hth] : store.get_tx(i.prev_out.reverse_hth)
+        prev_tx = block_validator ? block_validator.prev_txs_hash[i.prev_out_hash.reverse_hth] : store.tx(i.prev_out_hash.reverse_hth)
         next prev_tx if prev_tx && prev_tx.blk_id # blk_id is set only if it's in the main chain
         @block.tx.find {|t| t.binary_hash == i.prev_out } if @block
       }.compact

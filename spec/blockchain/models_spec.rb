@@ -47,14 +47,14 @@ Bitcoin::network = :testnet
 
     describe "Block" do
 
-      let(:block) { @store.get_block_by_depth(1) }
+      let(:block) { @store.block_at_height(1) }
 
       it "should get prev block" do
-        block.get_prev_block.should == @store.get_block_by_depth(0)
+        block.prev_block.should == @store.block_at_height(0)
       end
 
       it "should get next block" do
-        block.get_next_block.should == @store.get_block_by_depth(2)
+        block.next_block.should == @store.block_at_height(2)
       end
 
       it "should get total out" do
@@ -73,10 +73,10 @@ Bitcoin::network = :testnet
 
     describe "Tx" do
 
-      let(:tx) { @store.get_block_by_depth(1).tx[0] }
+      let(:tx) { @store.block_at_height(1).tx[0] }
 
       it "should get block" do
-        tx.get_block.should == @store.get_block_by_depth(1)
+        tx.block.should == @store.block_at_height(1)
       end
 
       it "should get confirmations" do

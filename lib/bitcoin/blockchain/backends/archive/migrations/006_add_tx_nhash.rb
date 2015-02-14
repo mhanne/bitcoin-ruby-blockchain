@@ -16,9 +16,10 @@ Sequel.migration do
 
       add_column :tx, :nhash, :bytea
 
-      if blk = @store.get_block_by_depth(0)
+      next  unless b = @store.db[:blk][depth: 0, chain: 0]
+      if blk = @store.block(b[:hash].hth)
         process_block(blk)
-        while blk = blk.get_next_block
+        while blk = blk.next_block
           process_block(blk)
         end
       end

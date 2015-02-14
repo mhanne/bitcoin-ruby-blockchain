@@ -56,12 +56,12 @@ module Bitcoin::Blockchain::Backends
 
       # reset the store; delete all data
       def reset
-        raise "Not implemented"
+        not_implemented
       end
 
       # check data consistency of the top +count+ blocks.
       def check_consistency count
-        raise "Not implemented"
+        not_implemented
       end
 
 
@@ -82,14 +82,14 @@ module Bitcoin::Blockchain::Backends
         log.debug { "new block #{blk.hash}" }
 
         # ignore block if we already have it
-        existing = get_block(blk.hash)
+        existing = block(blk.hash)
         if existing && existing.chain == MAIN
-          log.debug { "=> exists (#{existing.depth}, #{existing.chain})" }
-          return [existing.depth]
+          log.debug { "=> exists (#{existing.height}, #{existing.chain})" }
+          return [existing.height]
         end
 
         # find the prev_block this block links to
-        prev_block = get_block(blk.prev_block.reverse_hth)
+        prev_block = block(blk.prev_block_hash.reverse_hth)
 
         # validate block syntax
         unless @config[:skip_validation]
@@ -103,47 +103,47 @@ module Bitcoin::Blockchain::Backends
             log.debug { "=> genesis (0)" }
             return persist_block(blk, MAIN, 0)
           else
-            depth = prev_block ? prev_block.depth + 1 : 0
-            log.debug { "=> orphan (#{depth})" }
+            height = prev_block ? prev_block.height + 1 : 0
+            log.debug { "=> orphan (#{height})" }
             return [0, 2]  unless (in_sync? || Bitcoin.network_name =~ /testnet/)
-            return persist_block(blk, ORPHAN, depth)
+            return persist_block(blk, ORPHAN, height)
           end
         end
 
-        depth = prev_block.depth + 1
+        new_height = prev_block.height + 1
 
         # if there is a checkpoint at this height, make sure the block hash matches
-        checkpoint = @checkpoints[depth]
+        checkpoint = @checkpoints[new_height]
         if checkpoint && blk.hash != checkpoint
-          log.warn "Block #{depth} doesn't match checkpoint #{checkpoint}"
-          exit  if depth > get_depth # TODO: handle checkpoint mismatch properly
+          log.warn "Block #{height} doesn't match checkpoint #{checkpoint}"
+          exit  if new_height > height # TODO: handle checkpoint mismatch properly
         end
 
         if prev_block.chain == MAIN
           # if prev_block is the current head of the main chain, this block becomes the new one
-          if prev_block == get_head
-            log.debug { "=> main (#{depth})" }
-            if !@config[:skip_validation] && ( !@checkpoints.any? || depth > @checkpoints.keys.last )
+          if prev_block == head
+            log.debug { "=> main (#{new_height})" }
+            if !@config[:skip_validation] && ( !@checkpoints.any? || new_height > @checkpoints.keys.last )
               if self.class.name =~ /UtxoStore/
                 @config[:utxo_cache] = 0
                 @config[:block_cache] = 120
               end
               validator.validate(rules: [:context], raise_errors: true)
             end
-            res = persist_block(blk, MAIN, depth, prev_block.work)
+            res = persist_block(blk, MAIN, new_height, prev_block.work)
             push_notification(:block, [blk, *res])
             return res
           # if prev_block is below head in the main chain, this block starts a new side chain
           else
-            log.debug { "=> side (#{depth})" }
-            return persist_block(blk, SIDE, depth, prev_block.work)
+            log.debug { "=> side (#{new_height})" }
+            return persist_block(blk, SIDE, new_height, prev_block.work)
           end
         # prev_block is in a side chain
         else
           # if main chain is still longer, new block extends the side chain
-          if prev_block.work + blk.block_work <= get_head.work
-            log.debug { "=> side (#{depth})" }
-            return persist_block(blk, SIDE, depth, prev_block.work)
+          if prev_block.work + blk.block_work <= head.work
+            log.debug { "=> side (#{new_height})" }
+            return persist_block(blk, SIDE, new_height, prev_block.work)
           # if side chain is now longer than main, trigger a reorg
           else
             log.debug { "=> reorg" }
@@ -153,12 +153,12 @@ module Bitcoin::Blockchain::Backends
             fork_block = prev_block
             while fork_block.chain != MAIN
               new_main << fork_block.hash
-              fork_block = fork_block.get_prev_block
+              fork_block = fork_block.prev_block
             end
             # walk up the main chain starting with the fork block
             # these blocks will become the new side chain
             b = fork_block
-            while b = b.get_next_block
+            while b = b.next_block
               new_side << b.hash
             end
             log.debug { "new main: #{new_main.inspect}" }
@@ -169,7 +169,7 @@ module Bitcoin::Blockchain::Backends
             push_notification(:reorg, [ new_main.reverse, new_side ])
 
             # now the current block simply extends the new main chain
-            res = persist_block(blk, MAIN, depth, prev_block.work)
+            res = persist_block(blk, MAIN, new_height, prev_block.work)
             push_notification(:block, [blk, *res])
             return res
           end
@@ -178,13 +178,13 @@ module Bitcoin::Blockchain::Backends
 
       # persist given block +blk+ to storage.
       def persist_block(blk)
-        raise "Not implemented"
+        not_implemented
       end
 
       # update +attrs+ for block with given +hash+.
       # typically used to update the chain value during reorg.
       def update_block(hash, attrs)
-        raise "Not implemented"
+        not_implemented
       end
 
       def new_tx(tx)
@@ -193,31 +193,33 @@ module Bitcoin::Blockchain::Backends
 
       # store given +tx+
       def store_tx(tx, validate = true)
-        raise "Not implemented"
+        not_implemented
       end
 
       # check if block with given +blk_hash+ is already stored
       def has_block(blk_hash)
-        raise "Not implemented"
+        not_implemented
       end
 
       # check if tx with given +tx_hash+ is already stored
       def has_tx(tx_hash)
-        raise "Not implemented"
+        not_implemented
       end
 
       # get the hash of the leading block
-      def get_head
-        raise "Not implemented"
+      def head
+        not_implemented
       end
+      alias :get_head :head
 
-      # return depth of the head block
-      def get_depth
-        raise "Not implemented"
+      # return height of the head block
+      def height
+        not_implemented
       end
+      alias :get_depth :height
 
       # compute blockchain locator
-      def get_locator pointer = get_head
+      def locator pointer = head
         if @locator
           locator, head = @locator
           if head == pointer
@@ -225,13 +227,13 @@ module Bitcoin::Blockchain::Backends
           end
         end
 
-        return [("\x00"*32).hth]  if get_depth == -1
+        return [("\x00"*32).hth]  if height == -1
         locator, step, orig_pointer = [], 1, pointer
         while pointer && pointer.hash != Bitcoin::network[:genesis_hash]
           locator << pointer.hash
-          depth = pointer.depth - step
-          break unless depth > 0
-          prev_block = get_block_by_depth(depth) # TODO
+          height = pointer.height - step
+          break unless height > 0
+          prev_block = block_at_height(height) # TODO
           break unless prev_block
           pointer = prev_block
           step *= 2  if locator.size > 10
@@ -240,107 +242,129 @@ module Bitcoin::Blockchain::Backends
         @locator = [locator, orig_pointer]
         locator
       end
+      alias :get_locator :locator
 
       # get block with given +blk_hash+
-      def get_block(blk_hash)
-        raise "Not implemented"
+      def block(blk_hash)
+        not_implemented
       end
+      alias :get_block :block
 
-      # get block with given +depth+ from main chain
-      def get_block_by_depth(depth)
-        raise "Not implemented"
+      # get block with given +height+ from main chain
+      def block_at_height(height)
+        not_implemented
       end
+      alias :get_block_by_depth :block_at_height
 
       # get block with given +prev_hash+
-      def get_block_by_prev_hash(prev_hash)
-        raise "Not implemented"
+      def block_by_prev_hash(prev_hash)
+        not_implemented
       end
+      alias :get_block_by_prev_hash :block_by_prev_hash
 
       # get block that includes tx with given +tx_hash+
-      def get_block_by_tx(tx_hash)
-        raise "Not implemented"
+      def block_by_tx_hash(tx_hash)
+        not_implemented
       end
+      alias :get_block_by_tx :block_by_tx_hash
 
       # get block by given +block_id+
-      def get_block_by_id(block_id)
-        raise "Not implemented"
+      def block_by_id(block_id)
+        not_implemented
       end
+      alias :get_block_by_id :block_by_id
 
       # get block id in main chain by given +tx_id+
-      def get_block_id_for_tx_id(tx_id)
-        get_tx_by_id(tx_id).blk_id rescue nil # tx.blk_id is always in main chain
+      def block_id_for_tx_id(tx_id)
+        tx_by_id(tx_id).blk_id rescue nil # tx.blk_id is always in main chain
       end
+      alias :get_block_id_for_tx_id :block_id_for_tx_id
+
+      # get height of block with given +blk_id+
+      def height_for_block_id(blk_id)
+        block_by_id(blk_id).height
+      end
+      alias :get_height_for_block_id :height_for_block_id
 
       # get corresponding txin for the txout in
       # transaction +tx_hash+ with index +txout_idx+
-      def get_txin_for_txout(tx_hash, txout_idx)
-        raise "Not implemented"
+      def txin_for_txout(tx_hash, txout_idx)
+        not_implemented
       end
+      alias :get_txin_for_txout :txin_for_txout
 
       # get an array of corresponding txins for provided +txouts+
       # txouts = [tx_hash, tx_idx]
       # can be overwritten by specific storage for opimization
-      def get_txins_for_txouts(txouts)
-        txouts.map{|tx_hash, tx_idx| get_txin_for_txout(tx_hash, tx_idx) }.compact
+      def txins_for_txouts(txouts)
+        txouts.map{|tx_hash, tx_idx| txin_for_txout(tx_hash, tx_idx) }.compact
       end
+      alias :get_txins_for_txouts :txins_for_txouts
 
       # get tx with given +tx_hash+
-      def get_tx(tx_hash)
-        raise "Not implemented"
+      def tx(tx_hash)
+        not_implemented
       end
+      alias :get_tx :tx
 
       # get more than one tx by +tx_hashes+, returns an array
       # can be reimplemented by specific storage for optimization
       def get_txs(tx_hashes)
-        tx_hashes.map {|h| get_tx(h)}.compact
+        tx_hashes.map {|h| tx(h)}.compact
       end
 
       # get tx with given +tx_id+
-      def get_tx_by_id(tx_id)
-        raise "Not implemented"
+      def tx_by_id(tx_id)
+        not_implemented
       end
+      alias :get_tx_by_id :tx_by_id
 
       # Grab the position of a tx in a given block
-      def get_idx_from_tx_hash(tx_hash)
-        raise "Not implemented"
+      def idx_from_tx_hash(tx_hash)
+        not_implemented
       end
+      alias :get_idx_from_tx_hash :idx_from_tx_hash
 
       # collect all txouts containing the
       # given +script+
-      def get_txouts_for_pk_script(script)
-        raise "Not implemented"
+      def txouts_for_pk_script(script)
+        not_implemented
       end
+      alias :get_txouts_for_pk_script :txouts_for_pk_script
 
       # collect all txouts containing a
       # standard tx to given +address+
-      def get_txouts_for_address(address, unconfirmed = false)
+      def txouts_for_address(address, unconfirmed = false)
         hash160 = Bitcoin.hash160_from_address(address)
         type = Bitcoin.address_type(address)
-        get_txouts_for_hash160(hash160, type, unconfirmed)
+        txouts_for_hash160(hash160, type, unconfirmed)
       end
+      alias :get_txouts_for_address :txouts_for_address
 
       # collect all unspent txouts containing a
       # standard tx to given +address+
-      def get_unspent_txouts_for_address(address, unconfirmed = false)
-        txouts = self.get_txouts_for_address(address, unconfirmed)
+      def unspent_txouts_for_address(address, unconfirmed = false)
+        txouts = txouts_for_address(address, unconfirmed)
         txouts.select! do |t|
-          not t.get_next_in
+          not t.next_in
         end
         txouts
       end
+      alias :get_unspent_txouts_for_address :unspent_txouts_for_address
 
       # get balance for given +hash160+
-      def get_balance(hash160_or_addr, unconfirmed = false)
+      def balance(hash160_or_addr, unconfirmed = false)
         if Bitcoin.valid_address?(hash160_or_addr)
-          txouts = get_txouts_for_address(hash160_or_addr)
+          txouts = txouts_for_address(hash160_or_addr)
         else
-          txouts = get_txouts_for_hash160(hash160_or_addr, :pubkey_hash, unconfirmed)
+          txouts = txouts_for_hash160(hash160_or_addr, :pubkey_hash, unconfirmed)
         end
-        unspent = txouts.select {|o| o.get_next_in.nil?}
+        unspent = txouts.select {|o| o.next_in.nil?}
         unspent.map(&:value).inject {|a,b| a+=b; a} || 0
       rescue
         nil
       end
+      alias :get_balance :balance
 
       # parse script and collect address/txout mappings to index
       def parse_script txout, i, tx_hash = "", tx_idx
@@ -378,7 +402,7 @@ module Bitcoin::Blockchain::Backends
       end
 
       def rescan
-        raise "Not implemented"
+        not_implemented
       end
 
       # import satoshi bitcoind blk0001.dat blockchain file
@@ -406,8 +430,8 @@ module Bitcoin::Blockchain::Backends
 
               size = file.read(4).unpack("L")[0]
               blk = Bitcoin::P::Block.new(file.read(size))
-              depth, chain = new_block(blk)
-              break  if opts[:max_depth] && depth >= opts[:max_depth]
+              height, chain = new_block(blk)
+              break  if opts[:max_height] && height >= opts[:max_height]
 
               File.write(opts[:resume_file], [@import_file_num, @offset += (size + 8)].join("|"))
             end
@@ -426,7 +450,7 @@ module Bitcoin::Blockchain::Backends
       end
 
       def in_sync?
-        (get_head && (Time.now - get_head.time).to_i < 3600) ? true : false
+        (head && (Time.now - head.time).to_i < 3600) ? true : false
       end
 
       def push_notification channel, message
@@ -436,6 +460,12 @@ module Bitcoin::Blockchain::Backends
       def subscribe channel
         @notifiers[channel.to_sym] ||= EM::Channel.new
         @notifiers[channel.to_sym].subscribe {|*data| yield(*data) }
+      end
+
+      # called from abstract methods when their implementation is missing
+      def not_implemented
+        method = caller[0].scan(/:in\s`(.*?)'/)[0][0]
+        raise "Method '#{method}' not implemented in '#{backend_name}' backend."
       end
 
     end

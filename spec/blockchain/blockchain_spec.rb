@@ -53,22 +53,22 @@ Bitcoin::network = :testnet
       @store.backend_name.should == options[0].to_s
     end
 
-    it "should get depth" do
-      @store.get_depth.should == 3
+    it "should get height" do
+      @store.height.should == 3
     end
 
-    it "should report depth as -1 if store is empty" do
+    it "should report height as -1 if store is empty" do
       @store.reset
-      @store.get_depth.should == -1
+      @store.height.should == -1
     end
 
     it "should get head" do
-      @store.get_head
-        .should == @store.get_block("0000000098932356a236718829dd9e3eb0f9143317ab921333b1a203de336de4")
+      @store.head.should ==
+        @store.block("0000000098932356a236718829dd9e3eb0f9143317ab921333b1a203de336de4")
     end
 
     it "should get locator" do
-      @store.get_locator.should == [
+      @store.locator.should == [
         "0000000098932356a236718829dd9e3eb0f9143317ab921333b1a203de336de4",
         "000000037b21cac5d30fc6fda2581cf7b2612908aed2abbcc429c45b0557a15f",
         "000000033cc282bc1fa9dcae7a533263fd7fe66490f550d80076433340831604",
@@ -78,7 +78,7 @@ Bitcoin::network = :testnet
     it "should not store if there is no prev block" do
       @store.reset
       @store.store_block(@blk).should == [0, 2]
-      @store.get_depth.should == -1
+      @store.height.should == -1
     end
 
     it "should check whether block is already stored" do
@@ -87,72 +87,72 @@ Bitcoin::network = :testnet
       @store.has_block(@blk.hash).should == true
     end
 
-    it "should get block by depth" do
-      @store.get_block_by_depth(0).hash.should ==
+    it "should get block by height" do
+      @store.block_at_height(0).hash.should ==
         P::Block.new(fixtures_file('testnet/block_0.bin')).hash
-      @store.get_block_by_depth(1).hash.should ==
+      @store.block_at_height(1).hash.should ==
         P::Block.new(fixtures_file('testnet/block_1.bin')).hash
-      @store.get_block_by_depth(2).hash.should ==
+      @store.block_at_height(2).hash.should ==
         P::Block.new(fixtures_file('testnet/block_2.bin')).hash
     end
 
     it "should store and retrieve all relevant block data for hash/json serialization" do
       (0..2).each do |i|
         expected = P::Block.new(fixtures_file("testnet/block_#{i}.bin")).to_hash
-        @store.get_block_by_depth(i).to_hash.should == expected
+        @store.block_at_height(i).to_hash.should == expected
       end
     end
 
     it "should get block by hash" do
-      @store.get_block(
+      @store.block(
         "00000007199508e34a9ff81e6ec0c477a4cccff2a4767a8eee39c11db367b008").hash
         .should == P::Block.new(fixtures_file('testnet/block_0.bin')).hash
-      @store.get_block(
+      @store.block(
         "000000033cc282bc1fa9dcae7a533263fd7fe66490f550d80076433340831604").hash
         .should == P::Block.new(fixtures_file('testnet/block_1.bin')).hash
-      @store.get_block(
+      @store.block(
         "000000037b21cac5d30fc6fda2581cf7b2612908aed2abbcc429c45b0557a15f").hash
         .should == P::Block.new(fixtures_file('testnet/block_2.bin')).hash
     end
 
     it "should not get block" do
-      @store.get_block("nonexistant").should == nil
+      @store.block("nonexistant").should == nil
     end
 
-    it "should get block depth" do
-      @store.get_block("00000007199508e34a9ff81e6ec0c477a4cccff2a4767a8eee39c11db367b008")
-        .depth.should == 0
-      @store.get_block("000000033cc282bc1fa9dcae7a533263fd7fe66490f550d80076433340831604")
-        .depth.should == 1
-      @store.get_block("000000037b21cac5d30fc6fda2581cf7b2612908aed2abbcc429c45b0557a15f")
-        .depth.should == 2
+    it "should get block height" do
+      @store.block("00000007199508e34a9ff81e6ec0c477a4cccff2a4767a8eee39c11db367b008")
+        .height.should == 0
+      @store.block("000000033cc282bc1fa9dcae7a533263fd7fe66490f550d80076433340831604")
+        .height.should == 1
+      @store.block("000000037b21cac5d30fc6fda2581cf7b2612908aed2abbcc429c45b0557a15f")
+        .height.should == 2
     end
 
     it "should get prev block" do
-      @store.get_block("00000007199508e34a9ff81e6ec0c477a4cccff2a4767a8eee39c11db367b008")
-        .get_prev_block.should == nil
-      @store.get_block("000000033cc282bc1fa9dcae7a533263fd7fe66490f550d80076433340831604")
-        .get_prev_block.should ==
-        @store.get_block("00000007199508e34a9ff81e6ec0c477a4cccff2a4767a8eee39c11db367b008")
+      @store.block("00000007199508e34a9ff81e6ec0c477a4cccff2a4767a8eee39c11db367b008")
+        .prev_block.should == nil
+      @store.block("000000033cc282bc1fa9dcae7a533263fd7fe66490f550d80076433340831604")
+        .prev_block.should ==
+        @store.block("00000007199508e34a9ff81e6ec0c477a4cccff2a4767a8eee39c11db367b008")
     end
 
     it "should get next block" do
-      @store.get_block("0000000098932356a236718829dd9e3eb0f9143317ab921333b1a203de336de4")
-        .get_next_block.should == nil
-      @store.get_block("00000007199508e34a9ff81e6ec0c477a4cccff2a4767a8eee39c11db367b008")
-        .get_next_block.should ==
-        @store.get_block("000000033cc282bc1fa9dcae7a533263fd7fe66490f550d80076433340831604")
+      @store.block("0000000098932356a236718829dd9e3eb0f9143317ab921333b1a203de336de4")
+        .next_block.should == nil
+      @store.block("00000007199508e34a9ff81e6ec0c477a4cccff2a4767a8eee39c11db367b008")
+        .next_block.should ==
+        @store.block("000000033cc282bc1fa9dcae7a533263fd7fe66490f550d80076433340831604")
     end
 
     it "should get block for tx" do
       @store.store_block(@blk)
-      @store.get_block_by_tx(@blk.tx[0].hash).should == @blk
+      @store.block_by_tx_hash(@blk.tx[0].hash).should == @blk
     end
 
     it "should get block id for tx id" do
       @store.store_block(@blk)
-      tx = @store.get_tx(@blk.tx[0].hash)
-      @store.get_block_id_for_tx_id(tx.id).should == @store.get_block(@blk.hash).id
+      tx = @store.tx(@blk.tx[0].hash)
+      @store.block_id_for_tx_id(tx.id).should == @store.block(@blk.hash).id
     end
 
     describe :transactions do
@@ -180,27 +180,27 @@ Bitcoin::network = :testnet
 
       it "should store hash160 for txout" do
         @store.store_tx(@tx, false)
-        @store.get_tx(@tx.hash).out[0].hash160
+        @store.tx(@tx.hash).out[0].hash160
           .should == "3129d7051d509424d23d533fa2d5258977e822e3"
       end
 
       it "should get tx" do
         @store.store_tx(@tx, false)
-        @store.get_tx(@tx.hash).should == @tx
+        @store.tx(@tx.hash).should == @tx
       end
 
       it "should not get tx" do
-        @store.get_tx("nonexistant").should == nil
+        @store.tx("nonexistant").should == nil
       end
 
       it "should get the position for a given tx" do
         @store.store_block(@blk)
-        @store.get_idx_from_tx_hash(@blk.tx[0].hash).should == 0
+        @store.idx_from_tx_hash(@blk.tx[0].hash).should == 0
       end
 
       it "should get tx for txin" do
         @store.store_tx(@tx, false)
-        @store.get_tx(@tx.hash).in[0].get_tx.should == @tx
+        @store.tx(@tx.hash).in[0].tx.should == @tx
       end
 
       it "should get prev out for txin" do
@@ -208,12 +208,12 @@ Bitcoin::network = :testnet
         outpoint_tx = P::Tx.new(fixtures_file('rawtx-0437cd7f8525ceed2324359c2d0ba26006d92d856a9c20fa0241106ee5a597c9.bin'))
         @store.store_tx(outpoint_tx, false)
         @store.store_tx(tx, false)
-        @store.get_tx(tx.hash).in[0].get_prev_out.should == outpoint_tx.out[0]
+        @store.tx(tx.hash).in[0].prev_out.should == outpoint_tx.out[0]
       end
 
       it "should get tx for txout" do
         @store.store_tx(@tx, false)
-        @store.get_tx(@tx.hash).out[0].get_tx.should == @tx
+        @store.tx(@tx.hash).out[0].tx.should == @tx
       end
 
       it "should get next in for txin" do
@@ -221,7 +221,7 @@ Bitcoin::network = :testnet
         outpoint_tx = P::Tx.new(fixtures_file('rawtx-0437cd7f8525ceed2324359c2d0ba26006d92d856a9c20fa0241106ee5a597c9.bin'))
         @store.store_tx(outpoint_tx, false)
         @store.store_tx(tx, false)
-        @store.get_tx(outpoint_tx.hash).out[0].get_next_in.should == tx.in[0]
+        @store.tx(outpoint_tx.hash).out[0].next_in.should == tx.in[0]
       end
 
       it "should store multisig tx and index hash160's" do
@@ -232,7 +232,7 @@ Bitcoin::network = :testnet
         @store.store_tx(@tx, false)
         keys.each do |key|
           hash160 = Bitcoin.hash160(key.pub)
-          txouts = @store.get_txouts_for_hash160(hash160, :pubkey_hash, true)
+          txouts = @store.txouts_for_hash160(hash160, :pubkey_hash, true)
           txouts.size.should == 1
           txouts[0].pk_script.should == txout.pk_script
         end
@@ -240,7 +240,7 @@ Bitcoin::network = :testnet
 
       it "should index output script type" do
         @store.store_tx(@tx, false)
-        @store.get_tx(@tx.hash).out.first.type.should == :pubkey_hash
+        @store.tx(@tx.hash).out.first.type.should == :pubkey_hash
       end
 
     end
@@ -258,43 +258,43 @@ Bitcoin::network = :testnet
       end
 
       it "should get block for tx" do
-        @store.get_tx(@block.tx[1].hash).get_block.hash.should == @block.hash
+        @store.tx(@block.tx[1].hash).block.hash.should == @block.hash
       end
 
       it "should get txouts for pk script" do
         script = @blk.tx[0].out[0].pk_script
-        @store.get_txouts_for_pk_script(script)
+        @store.txouts_for_pk_script(script)
           .should == [@blk.tx[0].out[0]]
       end
 
       it "should get txouts for hash160" do
-        @store.get_txouts_for_hash160(@key2.hash160, :pubkey_hash, true)
+        @store.txouts_for_hash160(@key2.hash160, :pubkey_hash, true)
           .should == [@block.tx[1].out[0]]
       end
 
       it "should get txouts for address" do
-        @store.get_txouts_for_address(@key2.addr, true)
+        @store.txouts_for_address(@key2.addr, true)
           .should == [@block.tx[1].out[0]]
       end
 
       it "should get txouts for txin" do
         prev_tx = @block.tx[0]
         tx = build_tx { |t| create_tx(t, prev_tx, 0, [[prev_tx.out[0].value, Bitcoin::Key.generate]], @key) }
-        @store.get_txout_for_txin(tx.in[0]).should == prev_tx.out[0]
+        @store.txout_for_txin(tx.in[0]).should == prev_tx.out[0]
       end
 
       it "should get unspent txouts for address" do
-        @store.get_unspent_txouts_for_address(@key2.addr, true)
+        @store.unspent_txouts_for_address(@key2.addr, true)
           .should == [@block.tx[1].out[0]]
         @block2 = create_block @block.hash, true, [->(t) {
            create_tx(t, @block.tx[1], 0, [[20, @key2]], @key2) }], @key
-        @store.get_unspent_txouts_for_address(@key2.addr, true)
+        @store.unspent_txouts_for_address(@key2.addr, true)
           .should == [@block2.tx[1].out[0]]
       end
 
       it "should get balance for address" do
-        @store.get_balance(@key2.addr).should == 50
-        @store.get_balance(@key2.hash160).should == 50
+        @store.balance(@key2.addr).should == 50
+        @store.balance(@key2.hash160).should == 50
       end
 
       it "should get txouts for p2sh address (and not confuse regular and p2sh-type hash160" do
@@ -316,8 +316,8 @@ Bitcoin::network = :testnet
         @store.store_block(block)
 
         p2sh_address = Bitcoin.hash160_to_address(@key2.hash160, :script_hash)
-        o1 = @store.get_unspent_txouts_for_address(@key2.addr)
-        o2 = @store.get_unspent_txouts_for_address(p2sh_address)
+        o1 = @store.unspent_txouts_for_address(@key2.addr)
+        o2 = @store.unspent_txouts_for_address(p2sh_address)
 
         o1.size.should == 1
         o2.size.should == 1

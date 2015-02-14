@@ -37,14 +37,14 @@ module Bitcoin::Blockchain::Backends
     end
 
     # persist given block +blk+ to storage.
-    def persist_block blk, chain, depth, prev_work = 0
+    def persist_block blk, chain, height, prev_work = 0
       @db.transaction do
         attrs = {
           hash: blk.hash.htb.blob,
-          depth: depth,
+          height: height,
           chain: chain,
           version: blk.ver,
-          prev_hash: blk.prev_block.reverse.blob,
+          prev_hash: blk.prev_block_hash.reverse.blob,
           mrkl_root: blk.mrkl_root.reverse.blob,
           time: blk.time,
           bits: blk.bits,
@@ -100,12 +100,12 @@ module Bitcoin::Blockchain::Backends
         @db[:blk].where(prev_hash: blk.hash.htb.blob, chain: ORPHAN).each do |b|
           log.debug { "connecting orphan #{b[:hash].hth}" }
           begin
-            store_block(get_block(b[:hash].hth))
+            store_block(block(b[:hash].hth))
           rescue SystemStackError
-            EM.defer { store_block(get_block(b[:hash].hth)) }  if EM.reactor_running?
+            EM.defer { store_block(block(b[:hash].hth)) }  if EM.reactor_running?
           end
         end
-        return depth, chain
+        return height, chain
       end
     end
 
@@ -114,7 +114,7 @@ module Bitcoin::Blockchain::Backends
         @db[:blk].where(hash: new_side.map {|h| h.htb.blob }).update(chain: SIDE)
         new_main.each do |block_hash|
           unless @config[:skip_validation]
-            get_block(block_hash).validator(self).validate(raise_errors: true)
+            block(block_hash).validator(self).validate(raise_errors: true)
           end
           @db[:blk].where(hash: block_hash.htb.blob).update(chain: MAIN)
         end
@@ -198,7 +198,7 @@ module Bitcoin::Blockchain::Backends
       data = {
         tx_id: tx_id, tx_idx: idx,
         script_sig: txin.script_sig.blob,
-        prev_out: txin.prev_out.blob,
+        prev_out: txin.prev_out_hash.blob,
         prev_out_index: txin.prev_out_index,
         sequence: txin.sequence.unpack("V")[0],
       }
@@ -232,7 +232,7 @@ module Bitcoin::Blockchain::Backends
     def delete_tx(hash)
       log.debug { "Deleting tx #{hash} since all its outputs are spent" }
       @db.transaction do
-        tx = get_tx(hash)
+        tx = tx(hash)
         tx.in.each {|i| @db[:txin].where(id: i.id).delete }
         tx.out.each {|o| @db[:txout].where(id: o.id).delete }
         @db[:tx].where(id: tx.id).delete
@@ -250,69 +250,77 @@ module Bitcoin::Blockchain::Backends
     end
 
     # get head block (highest block from the MAIN chain)
-    def get_head
+    def head
       (@config[:cache_head] && @head) ? @head :
-        @head = wrap_block(@db[:blk].filter(chain: MAIN).order(:depth).last)
+        @head = wrap_block(@db[:blk].filter(chain: MAIN).order(:height).last)
     end
+    alias :get_head :head
 
-    def get_head_hash
+    def head_hash
       (@config[:cache_head] && @head) ? @head.hash :
-        @head = @db[:blk].filter(chain: MAIN).order(:depth).last[:hash].hth
+        @head = @db[:blk].filter(chain: MAIN).order(:height).last[:hash].hth
     end
+    alias :get_head_hash :head_hash
 
-    # get depth of MAIN chain
-    def get_depth
-      depth = (@config[:cache_head] && @head) ? @head.depth :
-        @depth = @db[:blk].filter(chain: MAIN).order(:depth).last[:depth] rescue nil
-
-      return -1  unless depth
-      depth
+    # get height of MAIN chain
+    def height
+      (@config[:cache_head] && @head) ? @head.height :
+        @height = @db[:blk].filter(chain: MAIN).order(:height).last[:height] rescue -1
     end
+    alias :get_depth :height
 
     # get block for given +blk_hash+
-    def get_block(blk_hash)
+    def block(blk_hash)
       wrap_block(@db[:blk][hash: blk_hash.htb.blob])
     end
+    alias :get_block :block
 
-    # get block by given +depth+
-    def get_block_by_depth(depth)
-      wrap_block(@db[:blk][depth: depth, chain: MAIN])
+    # get block by given +height+
+    def block_at_height(height)
+      wrap_block(@db[:blk][height: height, chain: MAIN])
     end
+    alias :get_block_by_depth :block_at_height
 
     # get block by given +prev_hash+
-    def get_block_by_prev_hash(prev_hash)
+    def block_by_prev_hash(prev_hash)
       wrap_block(@db[:blk][prev_hash: prev_hash.htb.blob, chain: MAIN])
     end
+    alias :block_by_prev_hash :block_by_prev_hash
 
     # get block by given +tx_hash+
-    def get_block_by_tx(tx_hash)
+    def block_by_tx_hash(tx_hash)
       tx = @db[:tx][hash: tx_hash.htb.blob]
       return nil  unless tx
       parent = @db[:blk_tx][tx_id: tx[:id]]
       return nil  unless parent
       wrap_block(@db[:blk][id: parent[:blk_id]])
     end
+    alias :get_block_by_tx :block_by_tx_hash
 
     # get block by given +id+
-    def get_block_by_id(block_id)
+    def block_by_id(block_id)
       wrap_block(@db[:blk][id: block_id])
     end
+    alias :get_block_by_id :block_by_id
 
     # get block id in the main chain by given +tx_id+
-    def get_block_id_for_tx_id(tx_id)
+    def block_id_for_tx_id(tx_id)
       @db[:blk_tx].join(:blk, id: :blk_id)
         .where(tx_id: tx_id, chain: MAIN).first[:blk_id] rescue nil
     end
+    alias :get_block_id_for_tx_id :block_id_for_tx_id
 
-    # get depth of block with given +blk_id+
-    def get_depth_for_block_id(blk_id)
-      @db[:blk][id: blk_id][:depth]
+    # get height of block with given +blk_id+
+    def height_for_block_id(blk_id)
+      @db[:blk][id: blk_id][:height]
     end
+    alias :get_depth_for_block_id :height_for_block_id
 
     # get transaction for given +tx_hash+
-    def get_tx(tx_hash)
+    def tx(tx_hash)
       wrap_tx(@db[:tx][hash: tx_hash.htb.blob])
     end
+    alias :get_tx :tx
 
     # get array of txes with given +tx_hashes+
     def get_txs(tx_hashes)
@@ -329,83 +337,88 @@ module Bitcoin::Blockchain::Backends
     end
 
     # get transaction by given +tx_id+
-    def get_tx_by_id(tx_id)
+    def tx_by_id(tx_id)
       wrap_tx(@db[:tx][id: tx_id])
     end
+    alias :get_tx_by_id :tx_by_id
 
     # get corresponding Models::TxIn for the txout in transaction
     # +tx_hash+ with index +txout_idx+
-    def get_txin_for_txout(tx_hash, txout_idx)
+    def txin_for_txout(tx_hash, txout_idx)
       tx_hash = tx_hash.htb_reverse.blob
       wrap_txin(@db[:txin][prev_out: tx_hash, prev_out_index: txout_idx])
     end
+    alias :get_txin_for_txout :txin_for_txout
 
     # optimized version of Storage#get_txins_for_txouts
-    def get_txins_for_txouts(txouts)
+    def txins_for_txouts(txouts)
       # sqlite can't handle expression trees > 1000
       return super(txouts) if @db.adapter_scheme == :sqlite  && txouts.size > 1000
 
-      @db[:txin].filter([:prev_out, :prev_out_index] => txouts.map{|tx_hash, tx_idx| [tx_hash.htb_reverse.blob, tx_idx]}).map{|i| wrap_txin(i)}
+      @db[:txin].filter([:prev_out, :prev_out_index] => txouts.map{|tx_hash, tx_idx|
+          [tx_hash.htb_reverse.blob, tx_idx] }).map{|i| wrap_txin(i) }
     end
+    alias :get_txins_for_txouts :txins_for_txouts
 
-    def get_txout_by_id(txout_id)
+    def txout_by_id(txout_id)
       wrap_txout(@db[:txout][id: txout_id])
     end
+    alias :get_txout_by_id :txout_by_id
 
     # get corresponding Models::TxOut for +txin+
-    def get_txout_for_txin(txin)
-      tx = @db[:tx][hash: txin.prev_out.reverse.blob]
+    def txout_for_txin(txin)
+      tx = @db[:tx][hash: txin.prev_out_hash.reverse.blob]
       return nil  unless tx
       wrap_txout(@db[:txout][tx_idx: txin.prev_out_index, tx_id: tx[:id]])
     end
+    alias :get_txout_for_txin :txout_for_txin
 
     # get all Models::TxOut matching given +script+
-    def get_txouts_for_pk_script(script)
+    def txouts_for_pk_script(script)
       txouts = @db[:txout].filter(pk_script: script.blob).order(:id)
       txouts.map{|txout| wrap_txout(txout)}
     end
+    alias :get_txouts_for_pk_script :txouts_for_pk_script
 
     # get all Models::TxOut matching given +hash160+
-    def get_txouts_for_hash160(hash160, type = :hash160, unconfirmed = false)
+    def txouts_for_hash160(hash160, type = :hash160, unconfirmed = false)
       addr = @db[:addr][hash160: hash160, type: ADDRESS_TYPES.index(type)]
       return []  unless addr
       txouts = @db[:addr_txout].where(addr_id: addr[:id])
         .map{|t| @db[:txout][id: t[:txout_id]] }
         .map{|o| wrap_txout(o) }
       unless unconfirmed
-        txouts.select!{|o| @db[:blk][id: o.get_tx.blk_id][:chain] == MAIN rescue false }
+        txouts.select!{|o| @db[:blk][id: o.tx.blk_id][:chain] == MAIN rescue false }
       end
       txouts
     end
+    alias :get_txouts_for_hash160 :txouts_for_hash160
 
-    def get_txouts_for_name_hash(hash)
-      @db[:names].filter(hash: hash).map {|n| get_txout_by_id(n[:txout_id]) }
-    end
-
-    # get all unconfirmed Models::TxOut
-    def get_unconfirmed_tx
-      @db[:unconfirmed].map{|t| wrap_tx(t)}
-    end
+    def txouts_for_name_hash(hash)
+      @db[:names].filter(hash: hash).map {|n| txout_by_id(n[:txout_id]) }
+    end 
+    alias :get_txouts_for_name_hash :txouts_for_name_hash
 
     # Grab the position of a tx in a given block
-    def get_idx_from_tx_hash(tx_hash)
+    def idx_from_tx_hash(tx_hash)
       tx = @db[:tx][hash: tx_hash.htb.blob]
       return nil  unless tx
       parent = @db[:blk_tx][tx_id: tx[:id]]
       return nil  unless parent
       return parent[:idx]
     end
+    alias :get_idx_from_tx_hash :idx_from_tx_hash
 
     # wrap given +block+ into Models::Block
     def wrap_block(block)
       return nil  unless block
 
-      data = { id: block[:id], depth: block[:depth], chain: block[:chain],
+      data = { id: block[:id], height: block[:height], chain: block[:chain],
         work: block[:work].to_i, hash: block[:hash].hth, size: block[:blk_size] }
       blk = Bitcoin::Blockchain::Models::Block.new(self, data)
 
       blk.ver = block[:version]
-      blk.prev_block = block[:prev_hash].reverse
+      blk.prev_block_hash = block[:prev_hash].reverse
       blk.mrkl_root = block[:mrkl_root].reverse
       blk.time = block[:time].to_i
       blk.bits = block[:bits]
@@ -476,18 +489,17 @@ module Bitcoin::Blockchain::Backends
     # - the prev_hash is the same as the previous blocks' hash
     # - the merkle root computed from all transactions is correct
     def check_consistency count = 1000
-      return  if get_depth < 1 || count <= 0
-      depth = get_depth
-      count = depth - 1  if count == -1
-      count = depth - 1  if count >= depth
+      return  if height < 1 || count <= 0
+      count = height - 1  if count == -1 || count >= height
       log.info { "Checking consistency of last #{count} blocks..." }
-      prev_blk = get_block_by_depth(depth - count - 1)
-      (depth - count).upto(depth).each do |depth|
-        blk = get_block_by_depth(depth)
-        raise "Block hash #{blk.depth} invalid!"  unless blk.hash == blk.recalc_block_hash
-        raise "Prev hash #{blk.depth} invalid!"  unless blk.prev_block.reverse.hth == prev_blk.hash
-        raise "Merkle root #{blk.depth} invalid!"  unless blk.verify_mrkl_root
-        print "#{blk.hash} #{blk.depth} OK\r"
+
+      prev_blk = block_at_height(height - count - 1)
+      (height - count).upto(height).each do |height|
+        blk = block_at_height(height)
+        raise "Block hash #{blk.height} invalid!"  unless blk.hash == blk.recalc_block_hash
+        raise "Prev hash #{blk.height} invalid!"  unless blk.prev_block_hash.reverse.hth == prev_blk.hash
+        raise "Merkle root #{blk.height} invalid!"  unless blk.verify_mrkl_root
+        print "#{blk.hash} #{blk.height} OK\r"
         prev_blk = blk
       end
       log.info { "Last #{count} blocks are consistent." }
@@ -497,16 +509,10 @@ module Bitcoin::Blockchain::Backends
     def get_received(address)
       return 0 unless Bitcoin.valid_address?(address)
 
-      txouts = get_txouts_for_address(address)
+      txouts = txouts_for_address(address)
       return 0 unless txouts.any?
 
       txouts.inject(0){ |m, out| m + out.value }
-
-      # total = 0
-      # txouts.each do |txout|
-      #   tx = txout.get_tx
-      #   total += txout.value
-      # end
     end
 
     protected
