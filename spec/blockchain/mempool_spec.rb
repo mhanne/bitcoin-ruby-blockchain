@@ -274,7 +274,6 @@ RULES = Bitcoin::Blockchain::Validation::Block::RULES
     describe :reorg do
 
       before do
-        @fake_chain.store.log.level = :debug
         @block_0 = @fake_chain.store.head
         @prev_tx = @fake_chain.pay_to @fake_chain.key.addr, 12345
         @tx = build_tx do |t|
@@ -336,6 +335,53 @@ RULES = Bitcoin::Blockchain::Validation::Block::RULES
         # the tx should now be in accepted state
         @mempool.get(@tx.hash).type.should == :accepted
       end
+
+    end
+
+
+    context :checks do
+
+      it "should check for enough fee" do
+        # a valid transaction which requires a fee but has none
+        tx = build_tx do |t|
+          t.input {|i| i.prev_out @store.get_head.tx[0], 0; i.signature_key @key }
+          t.output {|o| o.value(50e8.to_i - 1) ; o.to @key.addr }
+          t.output {|o| o.value(1) ; o.to @key.addr }
+        end
+        tx.minimum_block_fee.should == 10000
+
+        @mempool.add(tx).should == [:fee, [0, 10_000]]
+        @mempool.get(tx.hash).type.should == :rejected
+      end
+
+      it "should check for standard rules" do
+        # a transaction with an unknown-type pk_script
+        tx = build_tx do |t|
+          t.input {|i| i.prev_out @store.get_head.tx[0], 0; i.signature_key @key }
+          t.output {|o| o.value 123; o.to @key.addr }
+          t.instance_eval { @outs.last.txout.pk_script += "vu" }
+        end
+        Bitcoin::Script.new(tx.out[0].pk_script).type.should == :unknown
+
+        @mempool.add(tx).should == [:standard, [0]]
+        @mempool.get(tx.hash).type.should == :rejected
+      end
+
+      it "should check for too many multisig pubkeys" do
+        # a transaction with too many multisig pubkeys
+        tx = build_tx do |t|
+          t.input {|i| i.prev_out @store.get_head.tx[0], 0; i.signature_key @key }
+          t.output {|o| o.value 123; o.to [2, *4.times.map { @key.addr }], :multisig }
+        end
+        script = Bitcoin::Script.new(tx.out[0].pk_script)
+        script.type.should == :multisig
+        script.get_multisig_pubkeys.size.should == 4
+
+        @mempool.add(tx).should == [:n_pubkeys, [0]]
+        @mempool.get(tx.hash).type.should == :rejected
+      end
+
+      # TODO: test verify_* flags
 
     end
 

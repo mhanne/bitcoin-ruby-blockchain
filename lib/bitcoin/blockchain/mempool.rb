@@ -3,8 +3,6 @@
 # is detected, the doublespending tx is stored separately, and the tx that is
 # being doublespent is flagged.
 # TODO:
-#  check tx fee rules (optional)
-#  check is standard rules (optional)
 #  times_seen: count every peer only once
 #  compute propagation / confidence values based on last x seen
 #  time-out rejected txs more often
@@ -105,9 +103,28 @@ class Bitcoin::Blockchain::Mempool
 
   TYPES = [:accepted, :rejected, :doublespend]
 
+  DEFAULT_OPTIONS = {
+    db: "sqlite:/",
+    max_age: 600,
+    log_level: :warn,
+
+    require_standard: true, # require transaction to satisfy isStandard? checks
+    require_fee: true,      # require transaction to satisfy fee rules
+    allow_free: true,       # allow free txs in fee rules
+    max_multisig: 3,        # max allowed n in multisig scripts
+
+    # signature verification flags
+    verify_sigpushonly: true,
+    verify_minimaldata: true,
+    verify_cleanstack: true,
+    verify_dersig: true,
+    verify_low_s: true,
+    verify_strictenc: true,
+  }
+
   def initialize store, opts = {}
     @store = store
-    @opts = { max_age: 600, db: "sqlite:/", log_level: :warn }.merge(opts)
+    @opts = DEFAULT_OPTIONS.merge(opts)
     @db = Sequel::Database.connect(@opts[:db])
     log.level = @opts[:log_level]
     migrate
@@ -175,6 +192,16 @@ class Bitcoin::Blockchain::Mempool
       !!transactions[hash: hash.htb.blob, type: TYPES.index(:accepted)] }
   end
 
+  def inv hash
+    if existing = transactions[hash: hash.blob]
+      times_seen = existing[:times_seen] + 1
+      transactions.where(id: existing[:id]).update(times_seen: times_seen)
+      push_notification(:seen, { id: existing[:id], hash: existing[:hash].hth, times_seen: times_seen, updated_at: existing[:updated_at] })
+      #push_notification(:confirmed, { id: existing[:id], hash: existing[:hash].hth })
+    else
+      @inv[hash] ||= 0; @inv[hash] += 1
+    end
+  end
 
   # add +tx+ to the mempool. returns the mempool id or nil if the tx isn't valid
   # if the tx is a doublespend, it will be stored anyway, and the tx that is being
@@ -185,42 +212,72 @@ class Bitcoin::Blockchain::Mempool
       # if tx already exists, update times_seen and updated_at values
       transactions.where(id: existing[:id])
         .update(times_seen: existing[:times_seen] + 1, updated_at: Time.now)
-    else
-      # validate tx
-      validator = tx.validator(@store)
-      validator.mempool = self
-      if validator.validate
-        new_tx_id, priority = save_tx(tx, :accepted, validator.prev_txs)
-        log.info { "Accepted #{tx.hash} in %.4fs (priority: #{priority})." % (Time.now - start_time) }
-      else
-        if validator.error[0] == :prev_out
-          validator.error[1].each do |tx_hash, idx|
-            next  unless spent = spent_outs[prev_out: "#{tx_hash.htb}:#{idx}".blob]
-            log.info { "Tx #{tx.hash} is a double spend." }
-            log.debug { validator.error[1].inspect }
-            save_tx(tx, :doublespend, validator.prev_txs, transactions[id: spent[:spent_by]][:hash])
-            log.info { "Detected doublespend #{tx.hash} in %.4fs." % (Time.now - start_time) }
-            return false
-          end
-        end
-        save_tx(tx, :rejected, validator.prev_txs)
-        log.info { "Rejected #{tx.hash} in %.4fs." % (Time.now - start_time) }
-        log.debug { validator.error.inspect }
-        return validator.error
+      return existing[:id]
+    end
+
+    result, prev_txs, error = *validate(tx)
+    if result
+      new_tx_id, priority = save_tx(tx, :accepted, prev_txs)
+      log.info { "Accepted #{tx.hash} in %.4fs (priority: #{priority})." % (Time.now - start_time) }
+      return new_tx_id
+    elsif error[0] == :prev_out
+      error[1].each do |tx_hash, idx|
+        next  unless spent = spent_outs[prev_out: "#{tx_hash.htb}:#{idx}".blob]
+        log.info { "Tx #{tx.hash} is a double spend." }
+        log.debug { error[1].inspect }
+        save_tx(tx, :doublespend, prev_txs, transactions[id: spent[:spent_by]][:hash])
+        log.info { "Detected doublespend #{tx.hash} in %.4fs." % (Time.now - start_time) }
+        return false
       end
     end
-    new_tx_id || existing[:id]
+    save_tx(tx, :rejected, prev_txs)
+    log.info { "Rejected #{tx.hash} in %.4fs." % (Time.now - start_time) }
+    log.debug { error.inspect }
+    return error
   end
 
-  def inv hash
-    if existing = transactions[hash: hash.blob]
-      times_seen = existing[:times_seen] + 1
-      transactions.where(id: existing[:id]).update(times_seen: times_seen)
-      push_notification(:seen, { id: existing[:id], hash: existing[:hash].hth, times_seen: times_seen, updated_at: existing[:updated_at] })
-      #push_notification(:confirmed, { id: existing[:id], hash: existing[:hash].hth })
-    else
-      @inv[hash] ||= 0; @inv[hash] += 1
+  def validate tx
+    # run blockchain validation rules with given verify_* flags
+    validator = tx.validator(@store)
+    validator.mempool = self
+    result = validator.validate(opts)
+    prev_txs = validator.prev_txs
+
+    return [false, prev_txs, validator.error]  unless result
+
+    [:standard, :n_pubkeys, :fee].each do |check|
+      if result = send("check_#{check}", tx, prev_txs)
+        return [false, prev_txs, [check, result]]
+      end
     end
+
+    [true, prev_txs]
+  end
+
+  # check for standard output script format
+  def check_standard tx, prev_txs
+    return nil  unless opts[:require_standard]
+    non_standard_outs = tx.out.map.with_index {|o, i|
+      o.parsed_script.type == :unknown ? i : nil }.compact
+    non_standard_outs.any? ? non_standard_outs : nil
+  end
+
+  # check for too many multisig pubkeys
+  def check_n_pubkeys tx, prev_txs
+    large_multisig_outs = tx.out.map.with_index {|o, i| script = o.parsed_script
+      script.type == :multisig &&
+      script.get_multisig_pubkeys.size > opts[:max_multisig] ? i : nil }.compact
+    large_multisig_outs.any? ? large_multisig_outs : nil
+  end
+
+  # check for sufficient fee
+  def check_fee tx, prev_txs
+    return nil  unless opts[:require_fee]
+    input_value = tx.in.map.with_index {|txin, idx|
+      prev_txs[idx].out[txin.prev_out_index].value }.inject(:+)
+    actual_fee = input_value - tx.out.map(&:value).inject(:+)
+    required_fee = tx.calculate_minimum_fee(opts[:allow_free], :block)
+    actual_fee < required_fee ? [actual_fee, required_fee] : nil
   end
 
   # tell the mempool that given transactions +hashes+ have been confirmed into a block.

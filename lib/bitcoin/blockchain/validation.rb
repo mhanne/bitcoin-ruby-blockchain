@@ -175,7 +175,7 @@ module Bitcoin::Blockchain::Validation
       return false if block.tx.map(&:in).flatten.map {|i| [i.prev_out, i.prev_out_index] }.uniq! != nil
 
       tx_validators.all?{|v|
-        next true  unless v
+        next true  unless v # transaction is from mempool and already validated
         begin
           v.validate(rules: [:syntax], raise_errors: true)
         rescue ValidationError
@@ -188,7 +188,7 @@ module Bitcoin::Blockchain::Validation
     # Run all context checks on transactions
     def transactions_context
       tx_validators.all?{|v|
-        next true  unless v
+        next true  unless v # transaction is from mempool and already validated
         begin
           v.validate(rules: [:context], raise_errors: true)
         rescue ValidationError
@@ -201,14 +201,17 @@ module Bitcoin::Blockchain::Validation
     # Get validators for all tx objects in the current block
     def tx_validators
       @mempool_txs ||= {}
-      @tx_validators ||= block.tx[1..-1].map {|tx|
-        if mempool_tx = @store.mempool.get(tx.hash, :accepted)
-          @mempool_txs[tx.hash] = mempool_tx
-          # puts "Accepted mempool tx #{tx.hash} into block"
-          next
+      @tx_validators ||= block.tx[1..-1].map do |tx|
+        if mempool_tx = @store.mempool.get(tx.hash)
+          # skip validation for already validated accepted mempool txs
+          if mempool_tx.type == :accepted && !mempool_tx.doublespent?
+            @store.mempool.log.info { "Accepted mempool tx #{tx.hash} into block" }
+            @mempool_txs[tx.hash] = mempool_tx
+            next
+          end
         end
-        tx.validator(store, block, self) }
-      # @tx_validators ||= block.tx[1..-1].map {|tx| tx.validator(store, block, self)}
+        tx.validator(store, block, self)
+      end
     end
 
     # Fetch all prev_txs that will be needed for validation
@@ -261,7 +264,7 @@ module Bitcoin::Blockchain::Validation
 
   class Tx
 
-    attr_accessor :tx, :store, :error, :block_validator, :mempool
+    attr_accessor :tx, :store, :opts, :error, :block_validator, :mempool
 
     RULES = {
       syntax: [:hash, :lists, :max_size, :output_values, :duplicate_inputs, :coinbase_input, :lock_time, :standard],
@@ -273,8 +276,8 @@ module Bitcoin::Blockchain::Validation
     # raise_errors:: whether to raise ValidationError on failure (default: false)
     def validate(opts = {})
       return true  if KNOWN_EXCEPTIONS.include?(tx.hash)
-      opts[:rules] ||= [:syntax, :context]
-      opts[:rules].each do |name|
+      @opts = { rules: [:syntax, :context] }.merge(opts)
+      @opts[:rules].each do |name|
         store.log.debug { "validating tx #{name} #{tx.hash} (#{tx.to_payload.bytesize} bytes)" } if store
         RULES[name].each.with_index do |rule, i|
           unless (res = send(rule)) && res == true
@@ -374,7 +377,9 @@ module Bitcoin::Blockchain::Validation
 
     # check that all input signatures are valid
     def signatures
-      sigs = tx.in.map.with_index {|txin, idx| tx.verify_input_signature(idx, prev_txs[idx], (@block ? @block.time : 0)) }
+      block_time = @block ? @block.time : 0
+      sigs = tx.in.map.with_index {|txin, idx|
+        tx.verify_input_signature(idx, prev_txs[idx], block_time, opts) }
       sigs.all? || sigs.map.with_index {|s, i| s ? nil : i }.compact
     end
 
