@@ -6,11 +6,12 @@
 #  check tx fee rules (optional)
 #  check is standard rules (optional)
 #  times_seen: count every peer only once
-#  reorgs! (remove all transactions spending outputs that are in the old main block but not the new one)
 #  compute propagation / confidence values based on last x seen
 #  time-out rejected txs more often
 #  make payload in callbacks optional
 #  send / answer "mempool" messages
+#  test validation explicitly (also dependencies between txs)
+#  re-evaluate rejected txs after every new tx?
 # NOTES
 #  mempool archive node 96.2.103.25
 class Bitcoin::Blockchain::Mempool
@@ -227,7 +228,7 @@ class Bitcoin::Blockchain::Mempool
   # permanently invalidate any doublespends of it.
   def confirmed_txs hashes
     txs = transactions.where(hash: hashes.map(&:htb).map(&:blob))
-    return false unless txs.any?
+    (reevaluate_rejected; return false) unless txs.any?
 
     # reject all doublespends involving the newly confirmed transactions,
     [ transactions.where(doublespends: hashes.map(&:htb).map(&:blob)),
@@ -250,7 +251,38 @@ class Bitcoin::Blockchain::Mempool
     txs.delete # delete the actual transaction records
 
     log.info { "Confirmed #{hashes.count} transactions." }
+    reevaluate_rejected
     true
+  end
+
+  def reorg new_side, new_main
+    # find prev outs that have moved to the new side chain
+    removed_outs = new_side.map {|block_hash|
+      @store.get_block(block_hash).tx.map {|t|
+        t.out.map.with_index {|o, idx| "#{t.hash.htb}:#{idx}" } } }.flatten
+
+    # drop those prev outs that re-appear in the new main chain
+    removed_outs -= new_main.map {|block_hash|
+      @store.get_block(block_hash).tx.map {|t|
+        t.out.map.with_index {|o, idx| "#{t.hash.htb}:#{idx}" } } }.flatten
+
+    # remove all spent_outs that have been removed from the utxo set by this reorg
+    spent_ids = spent_outs.where(prev_out: removed_outs.map(&:blob)).map {|o| o[:spent_by] }
+    spent_outs.where(spent_by: spent_ids).delete
+
+    # update the mempool transactions spending those outputs to :rejected state
+    transactions.where(id: spent_ids).update(type: TYPES.index(:rejected))
+  end
+
+  # reevaluate rejected transactions
+  def reevaluate_rejected
+    rejected_txs = rejected.map {|r| r.merge(tx: Bitcoin::P::Tx.new(r[:payload])) }
+    rejected_txs.select! {|t| t[:tx].validator(@store).validate }
+
+    transactions.where(id: rejected_txs.map{|t| t[:id]}).update(type: TYPES.index(:accepted))
+    
+    spent_outs.multi_insert rejected_txs.map{|t| t[:tx].in.map {|i|
+        {prev_out: "#{i.prev_out_hash}:#{i.prev_out_index}".blob, spent_by: t[:id]} }}.flatten
   end
 
   # clean up old transactions that haven't been seen for a while

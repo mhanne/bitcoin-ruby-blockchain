@@ -166,11 +166,13 @@ module Bitcoin::Blockchain::Backends
             while b = b.next_block
               new_side << b.hash
             end
+
             log.debug { "new main: #{new_main.inspect}" }
             log.debug { "new side: #{new_side.inspect}" }
 
             # switch side and main chain
             reorg(new_side.reverse, new_main.reverse)
+            @mempool.reorg(new_side.reverse, new_main.reverse)
             push_notification(:reorg, [ new_main.reverse, new_side ])
 
             # now the current block simply extends the new main chain

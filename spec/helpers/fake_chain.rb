@@ -19,9 +19,9 @@ class FakeChain
     conf.times { new_block }
   end
 
-  def new_block
+  def new_block prev_hash = @prev_hash
     blk = build_block(Bitcoin.decode_compact_bits(Bitcoin.network[:proof_of_work_limit])) do |b|
-      b.prev_block @prev_hash
+      b.prev_block prev_hash
       b.tx do |t|
         t.input {|i| i.coinbase }
         t.output do |o|
@@ -36,9 +36,24 @@ class FakeChain
       @tx.uniq(&:hash).each {|tx| b.tx tx }
       @tx = []
     end
-
     @prev_hash = blk.hash
     send_block(blk)
+  end
+
+  def pay_to recipient, value, conf = 0, prev_out = nil, sig_key = nil
+    prev_out ||= [@store.head.tx[0], 0]
+    tx = build_tx do |t|
+      t.input do |i|
+        i.prev_out *prev_out
+        i.signature_key sig_key || @key
+      end
+      t.output do |o|
+        o.to recipient
+        o.value value
+      end
+    end
+    add_tx(tx, conf)
+    tx
   end
 
   def send_block blk

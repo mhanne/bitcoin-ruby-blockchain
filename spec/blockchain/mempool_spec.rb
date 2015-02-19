@@ -102,8 +102,22 @@ RULES = Bitcoin::Blockchain::Validation::Block::RULES
       @mempool.add(@chain_tx).should == 2
     end
 
-    it "should not add invalid tx to mempool" do
+    it "should add invalid tx as :rejected" do
       @mempool.add(@invalid_tx).should == [:signatures, [0]]
+      @mempool.get(@invalid_tx.hash).type.should == :rejected
+    end
+
+    it "should re-evaluate rejected txs after new block" do
+      # add tx with missing prev out so it's rejected
+      @mempool.add(@chain_tx).should == [:prev_out, [[@valid_tx.hash, 0]]]
+      @mempool.get(@chain_tx.hash).type.should == :rejected
+
+      # create a new block containing the missing prev tx
+      @fake_chain.add_tx(@valid_tx)
+      @fake_chain.new_block
+
+      # the tx should now be in accepted state
+      @mempool.get(@chain_tx.hash).type.should == :accepted
     end
 
     it "should remove confirmed tx from mempool" do
@@ -256,6 +270,75 @@ RULES = Bitcoin::Blockchain::Validation::Block::RULES
       end
 
     end
+
+    describe :reorg do
+
+      before do
+        @fake_chain.store.log.level = :debug
+        @block_0 = @fake_chain.store.head
+        @prev_tx = @fake_chain.pay_to @fake_chain.key.addr, 12345
+        @tx = build_tx do |t|
+          t.input {|i| i.prev_out @prev_tx, 0; i.signature_key @fake_chain.key }
+          t.output {|o| o.to @fake_chain.key.addr; o.value 1234 }
+        end
+      end
+
+      it "should leave transactions whose prev outs are in both blocks" do
+        # store block 1A confirming prev_tx
+        @fake_chain.new_block(@block_0.hash)
+
+        # store block 1B also confirming prev_tx
+        @fake_chain.add_tx(@prev_tx)
+        @fake_chain.new_block(@block_0.hash)
+
+        # put tx depending on  in mempool
+        @mempool.add(@tx).should == 1
+
+        # store block 2B to trigger reorg
+        @fake_chain.new_block
+
+        # the tx should still/again be in accepted state
+        tx = @mempool.get(@tx.hash)
+        tx.hash.should == @tx.hash
+        tx.type.should == :accepted
+      end
+
+      it "should remove transactions whose prev_outs are invalid" do
+        # store block 1A confirming prev_tx
+        @fake_chain.new_block(@block_0.hash)
+
+        # store block 1B without the prev_tx
+        @fake_chain.new_block(@block_0.hash)
+
+        # put tx depending on prev_tx in mempool
+        @mempool.add(@tx).should == 1
+
+        # store block 2B to trigger reorg
+        @fake_chain.new_block
+
+        # the tx should now be in rejected state
+        tx = @mempool.get(@tx.hash)
+        tx.hash.should == @tx.hash
+        tx.type.should == :rejected
+      end
+
+      it "should re-evaluate rejected transactions" do
+        # add tx with missing prev out, which is rejected
+        @mempool.add(@tx).should == [:prev_out, [[@prev_tx.hash, 0]]]
+        @mempool.get(@tx.hash).type.should == :rejected
+
+        # trigger reorg that adds the missing tx to the new main chain
+        @fake_chain.new_block(@block_0.hash)
+        @fake_chain.new_block(@block_0.hash)
+        @fake_chain.add_tx @prev_tx
+        @fake_chain.new_block
+
+        # the tx should now be in accepted state
+        @mempool.get(@tx.hash).type.should == :accepted
+      end
+
+    end
+
 
   end
 
