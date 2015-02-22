@@ -98,16 +98,16 @@ module Bitcoin::Blockchain::Backends
         tx.in.each.with_index do |txin, txin_tx_idx|
           next  if txin.coinbase?
           size = @new_outs.size
-          @new_outs.delete_if {|o| o[0][:tx_hash] == txin.prev_out_hash.reverse.hth &&
+          @new_outs.delete_if {|o| o[0][:tx_hash] == txin.prev_out_hash.reverse &&
             o[0][:tx_idx] == txin.prev_out_index }
           @spent_outs << {
-            tx_hash: txin.prev_out_hash.reverse.hth.to_sequel_blob,
+            tx_hash: txin.prev_out_hash.reverse.to_sequel_blob,
             tx_idx: txin.prev_out_index  }  if @new_outs.size == size
         end
         tx.out.each.with_index do |txout, txout_tx_idx|
           _, a, n = *parse_script(txout, txout_tx_idx, tx.hash, txout_tx_idx)
           @new_outs << [{
-              tx_hash: tx.hash.blob,
+              tx_hash: tx.hash.htb.blob,
               tx_idx: txout_tx_idx,
               blk_id: block_id,
               pk_script: txout.pk_script.blob,
@@ -143,7 +143,7 @@ module Bitcoin::Blockchain::Backends
         if @spent_outs.any?
           @spent_outs.each_slice(250) do |slice|
             if @db.adapter_scheme == :postgres
-              condition = slice.map {|o| "(tx_hash = '#{o[:tx_hash]}' AND tx_idx = #{o[:tx_idx]})" }.join(" OR ")
+              condition = slice.map {|o| "(tx_hash = E'\\\\x#{o[:tx_hash].hth}' AND tx_idx = #{o[:tx_idx]})" }.join(" OR ")
             else
               condition = slice.map {|o| "(tx_hash = X'#{o[:tx_hash].hth}' AND tx_idx = #{o[:tx_idx]})" }.join(" OR ")
             end
@@ -151,7 +151,6 @@ module Bitcoin::Blockchain::Backends
                    (SELECT 1 FROM utxo WHERE
                      utxo.id = addr_txout.txout_id AND (#{condition}));"].all
             @db["DELETE FROM utxo WHERE #{condition};"].first
-
           end
         end
         @spent_outs = []
@@ -230,7 +229,7 @@ module Bitcoin::Blockchain::Backends
 
     # check if transaction +tx_hash+ exists
     def has_tx(tx_hash)
-      !!@db[:utxo].where(tx_hash: tx_hash.blob).get(1)
+      !!@db[:utxo].where(tx_hash: tx_hash.htb.blob).get(1)
     end
 
     # get head block (highest block from the MAIN chain)
@@ -266,7 +265,7 @@ module Bitcoin::Blockchain::Backends
 
     # get block by given +tx_hash+
     def block_by_tx_hash(tx_hash)
-      block_id = @db[:utxo][tx_hash: tx_hash.blob][:blk_id]
+      block_id = @db[:utxo][tx_hash: tx_hash.htb.blob][:blk_id]
       block_by_id(block_id)
     end
     alias :get_block_by_tx :block_by_tx_hash
@@ -296,7 +295,7 @@ module Bitcoin::Blockchain::Backends
 
     # get corresponding Models::TxOut for +txin+
     def txout_for_txin(txin)
-      wrap_txout(@db[:utxo][tx_hash: txin.prev_out_hash.reverse.hth.blob, tx_idx: txin.prev_out_index])
+      wrap_txout(@db[:utxo][tx_hash: txin.prev_out_hash.reverse.blob, tx_idx: txin.prev_out_index])
     end
     alias :get_txout_for_txin :txout_for_txin
 
@@ -347,8 +346,8 @@ module Bitcoin::Blockchain::Backends
 
     # wrap given +transaction+ into Models::Transaction
     def wrap_tx(tx_hash)
-      utxos = @new_outs.select {|o| o[0][:tx_hash] == tx_hash }.map {|u| u[0] }
-      utxos = @db[:utxo].where(tx_hash: tx_hash.blob)  unless utxos.any?
+      utxos = @new_outs.select {|o| o[0][:tx_hash] == tx_hash.htb }.map {|u| u[0] }
+      utxos = @db[:utxo].where(tx_hash: tx_hash.htb.blob)  unless utxos.any?
 
       return nil  unless utxos.any?
       data = { blk_id: utxos.first[:blk_id], id: tx_hash }
@@ -361,7 +360,7 @@ module Bitcoin::Blockchain::Backends
     # wrap given +output+ into Models::TxOut
     def wrap_txout(utxo)
       return nil  unless utxo
-      data = {id: utxo[:id], tx_id: utxo[:tx_hash], tx_idx: utxo[:tx_idx]}
+      data = {id: utxo[:id], tx_id: utxo[:tx_hash].hth, tx_idx: utxo[:tx_idx]}
       txout = Bitcoin::Blockchain::Models::TxOut.new(self, data)
       txout.value = utxo[:value]
       txout.pk_script = utxo[:pk_script]
