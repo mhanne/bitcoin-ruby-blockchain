@@ -345,7 +345,9 @@ module Bitcoin::Blockchain::Backends
 
     # wrap given +transaction+ into Models::Transaction
     def wrap_tx(tx_hash)
-      utxos = @db[:utxo].where(tx_hash: tx_hash.blob)
+      utxos = @new_outs.select {|o| o[0][:tx_hash] == tx_hash }.map {|u| u[0] }
+      utxos = @db[:utxo].where(tx_hash: tx_hash.blob)  unless utxos.any?
+
       return nil  unless utxos.any?
       data = { blk_id: utxos.first[:blk_id], id: tx_hash }
       tx = Bitcoin::Blockchain::Models::Tx.new(self, data)
