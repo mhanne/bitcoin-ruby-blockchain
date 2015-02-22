@@ -47,7 +47,7 @@ Sequel.migration do
       print "\r#{i}"; i+=1
 
     end
-    puts
+    puts  if i > 0
 
     add_index :addr, [:hash160, :type]
 

@@ -36,7 +36,7 @@ def setup_db backend, db = nil, conf = {}
 
   return nil  unless uri # skip
 
-  destroy_db(db, uri, conf)  if conf[:destroy]
+  destroy_db(db, uri, conf)
   Bitcoin::Blockchain.create_store(backend, conf.merge(db: uri, log_level: :warn))
 end
 

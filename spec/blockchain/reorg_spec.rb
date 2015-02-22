@@ -30,10 +30,8 @@ Bitcoin.network = :testnet
     true
   end
 
-  before(:all) { skip  unless @store = setup_db(*options) }
-
   before do
-    @store.reset
+    skip  unless @store = setup_db(*options)
     def @store.in_sync?; true; end
     
     Bitcoin.network = :testnet
@@ -49,6 +47,8 @@ Bitcoin.network = :testnet
     @store.store_block(@block0)
     @store.head.should == @block0
   end
+
+  after { close_db @store }
 
   it "should retarget" do
     @store.reset

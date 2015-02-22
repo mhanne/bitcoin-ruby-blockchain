@@ -20,17 +20,13 @@ Bitcoin::network = :testnet
 
   describe "Blockchain::Backends::#{options[0].to_s.capitalize} (#{options[1]})" do
 
-    before(:all) { skip  unless @store = setup_db(*options) }
-
     before do
       Bitcoin.network = :testnet
       Bitcoin.network[:no_difficulty] = true
       Bitcoin.network[:proof_of_work_limit] = Bitcoin.encode_compact_bits("ff"*32)
 
-      
+      skip  unless @store = setup_db(*options)
       def @store.in_sync?; true; end
-      @store.reset
-
       @store.store_block(P::Block.new(fixtures_file('testnet/block_0.bin')))
       @store.store_block(P::Block.new(fixtures_file('testnet/block_1.bin')))
       @store.store_block(P::Block.new(fixtures_file('testnet/block_2.bin')))
@@ -47,6 +43,7 @@ Bitcoin::network = :testnet
 
     after do
       Bitcoin.network.delete :no_difficulty
+      close_db @store
     end
 
     it "should get backend name" do
@@ -157,7 +154,7 @@ Bitcoin::network = :testnet
 
     describe :transactions do
 
-      before(:all) do
+      before do
         if @store.backend_name == "utxo"
           skip "Utxo backend doesn't support storing single transactions"  
         end

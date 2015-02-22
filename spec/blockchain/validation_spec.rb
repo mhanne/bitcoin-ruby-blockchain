@@ -23,10 +23,8 @@ Bitcoin.network = :regtest
     @store.balance(Bitcoin.hash160_from_address(addr))
   end
 
-  before(:all) { skip  unless @store = setup_db(*options) }
-
   before do
-    @store.reset
+    skip  unless @store = setup_db(*options)
     @store.log.level = :warn
     Bitcoin.network[:proof_of_work_limit] = Bitcoin.encode_compact_bits("f"*64)
     @key = Bitcoin::Key.generate
@@ -38,6 +36,8 @@ Bitcoin.network = :regtest
     @store.head.should == @block1
     @block = create_block @block1.hash, false
   end
+
+  after { close_db @store }
 
   def check_block blk, error
     b = blk.dup
@@ -173,11 +173,9 @@ end
 
 describe "transaction rules (#{options[0]} - #{options[1]})" do
 
-  before(:all) { skip  unless @store = setup_db(*options) }
-
   before do
     Bitcoin.network = :regtest
-    @store.reset
+    skip  unless @store = setup_db(*options)
     @store.log.level = :warn
 
     Bitcoin.network[:proof_of_work_limit] = Bitcoin.encode_compact_bits("f"*64)
@@ -190,6 +188,8 @@ describe "transaction rules (#{options[0]} - #{options[1]})" do
     @store.head.should == @block1
     @tx = build_tx {|t| create_tx(t, @block1.tx.first, 0, [[50, @key]]) }
   end
+
+  after { close_db @store }
 
   def check_tx tx, error
     t = tx.dup

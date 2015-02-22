@@ -28,7 +28,7 @@ require 'benchmark'
   describe "#{backend_name}:#{adapter_name}" do
 
     before do
-      next  unless @store = setup_db(backend_name, adapter_name, conf.merge(destroy: true))
+      next  unless @store = setup_db(backend_name, adapter_name, conf)
       @store.log.level = :warn
       @fake_chain = FakeBlockchain.new 10, block_size: 1_000_000
     end
