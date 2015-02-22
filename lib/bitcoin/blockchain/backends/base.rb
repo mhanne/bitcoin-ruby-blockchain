@@ -433,10 +433,23 @@ module Bitcoin::Blockchain::Backends
               raise "invalid network magic" unless Bitcoin.network[:magic_head] == magic
 
               size = file.read(4).unpack("L")[0]
-              blk = Bitcoin::P::Block.new(file.read(size))
-              height, chain = new_block(blk)
-              break  if opts[:max_height] && height >= opts[:max_height]
 
+              # read 80 byte block header
+              hdr_bytes = file.read(80)
+              hdr = Bitcoin::P::Block.new
+              hdr.parse_data_from_io(StringIO.new(hdr_bytes), true)
+
+              # check if we already have a block with the same hash
+              if has_block(hdr.hash)
+                # if so, we skip reading the block data and seek to the next one
+                print "\rAlready have block #{hdr.hash}"
+                file.seek(file.pos + size - 80)
+              else
+                # if not, read the block data, parse it, and add it to the chain
+                blk = Bitcoin::P::Block.new(hdr_bytes + file.read(size - 80))
+                h, chain = new_block(blk)
+                break  if opts[:max_height] && h >= opts[:max_height]
+              end
               File.write(opts[:resume_file], [@import_file_num, @offset += (size + 8)].join("|"))
             end
           end
