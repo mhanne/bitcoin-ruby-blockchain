@@ -366,6 +366,10 @@ module Bitcoin::Blockchain::Backends
       end
       alias :get_balance :balance
 
+      def database_size
+        not_implemented
+      end
+
       # parse script and collect address/txout mappings to index
       def parse_script txout, i, tx_hash = "", tx_idx
         addrs, names = [], []

@@ -34,22 +34,24 @@ module Bitcoin::Blockchain::Backends
     # create sequel store with given +config+
     def initialize config
       super config
-      @spent_outs, @new_outs, @watched_addrs = [], [], []
-      @tx_cache, @block_cache = {}, {}
+      reset_caches
     end
 
     # connect to database
     def connect
       super
       load_watched_addrs
-#      rescan
+    end
 
+    def reset_caches
+      @spent_outs, @new_outs, @watched_addrs = [], [], []
+      @tx_cache, @block_cache, @head = {}, {}, nil
     end
 
     # reset database; delete all data
     def reset
       [:blk, :utxo, :addr, :addr_txout].each {|table| @db[table].delete }
-      @head = nil
+      reset_caches
     end
 
     # persist given block +blk+ to storage.

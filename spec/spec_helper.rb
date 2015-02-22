@@ -25,25 +25,40 @@ require 'minitest/mock'
 include MiniTest
 
 def setup_db backend, db = nil, conf = {}
-  uri = case db
-        when :sqlite
-          "sqlite:/"
-        when :postgres
-          ENV["TEST_DB_POSTGRES"].dup rescue nil
-        when :mysql
-          ENV["TEST_DB_MYSQL"].dup rescue nil
-        end
-  if [:postgres, :mysql].include?(db)
-    unless uri
-      puts "Skipping #{db} tests"  
-      return nil
+  return nil  unless uri = case db
+    when :sqlite
+      conf[:db] ? "sqlite://spec/tmp/#{conf[:db]}.db" : (conf[:db] || "sqlite:/")
+    when :postgres
+      ENV["TEST_DB_POSTGRES"].dup rescue nil
+    when :mysql
+      ENV["TEST_DB_MYSQL"].dup rescue nil
     end
-    db = Sequel.connect(uri)
-    db.drop_table(*db.tables, cascade: true)
-  end
+
+  return nil  unless uri # skip
+
+  destroy_db(db, uri, conf)  if conf[:destroy]
   Bitcoin::Blockchain.create_store(backend, conf.merge(db: uri, log_level: :warn))
 end
 
+def close_db store
+  store.db.disconnect
+end
+
+def destroy_db db, uri, conf
+  case db
+  when :sqlite
+    FileUtils.rm_rf("spec/tmp/#{conf[:db]}.db")  if conf[:db]
+  when :postgres
+    db_name = uri.split("/").last
+    port = uri.split("/")[-2].scan(/\:(\d+)$/)[0]
+    port = port[0].to_i  if port
+    `echo 'DROP DATABASE #{db_name}; CREATE DATABASE #{db_name};' | psql #{port ? "-p #{port}" : ""}`
+  when :mysql
+    db_name = uri.split("/").last
+    user, pass = uri.split("/")[-2].scan(/(.*?)\:(.*?)\@.*?/)[0]
+    `echo 'DROP DATABASE #{db_name}; CREATE DATABASE #{db_name};' | mysql #{user ? "-u#{user}" : ""} #{pass ? "-p#{pass}": ""}`
+  end
+end
 
 def fixtures_path(relative_path)
   File.join(File.dirname(__FILE__), 'fixtures', relative_path)

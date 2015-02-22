@@ -75,6 +75,22 @@ module Bitcoin::Blockchain::Backends
           log.debug { "set sqlite pragma #{name} to #{value}" }
         end
       end
+
+      # get the total on-disk size of this blockchain database.
+      # Note: This won't work for in-memory or asynchronous/non-journaled sqlite dbs
+      def database_size
+        _, conf = @db.uri.split(":", 2)
+        size = case @db.adapter_scheme
+          when :sqlite
+            File.size(@db.opts[:database])
+          when :postgres
+            @db.fetch("select pg_database_size('#{@db.opts[:database]}')").first[:pg_database_size]
+          when :mysql
+            @db.fetch("select sum(data_length+index_length) from information_schema.tables where table_schema = '#{@db.opts[:database]}';").first.to_a[0][1].to_i
+          end
+        size
+      end
+
     end
 
 end

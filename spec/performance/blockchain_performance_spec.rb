@@ -5,12 +5,15 @@ require_relative '../helpers/fake_blockchain'
 require 'benchmark'
 
 [
-  [:archive, :postgres]
-].compact.each do |options|
+  [:utxo, :sqlite, db: :benchmark],
+  [:utxo, :postgres],
+  [:utxo, :mysql],
+  [:archive, :sqlite, db: :benchmark],
+  [:archive, :postgres],
+  [:archive, :mysql],
+].compact.each do |backend_name, adapter_name, conf = {}|
 
   Bitcoin.network = :fake
-
-  next  unless storage = setup_db(*options)
 
   def benchmark after_cb = nil
     res = []
@@ -18,17 +21,19 @@ require 'benchmark'
       res << Benchmark.measure { yield blk, i }
       after_cb.call(blk, i)  if after_cb
     end
-    puts res.inject(:+).format
+    print res.inject(:+).format.strip
+    print " - size: " + @store.database_size.to_s.reverse.gsub(/...(?=.)/,'\&.').reverse
   end
 
-  describe "#{storage.backend_name} block storage" do
+  describe "#{backend_name}:#{adapter_name}" do
 
     before do
-      @store = storage
-      @store.reset
+      next  unless @store = setup_db(backend_name, adapter_name, conf.merge(destroy: true))
       @store.log.level = :warn
-      @fake_chain = FakeBlockchain.new 10, block_size: 100_000
+      @fake_chain = FakeBlockchain.new 10, block_size: 1_000_000
     end
+
+    after { close_db @store }
 
     it "validate block" do
       benchmark(->(b, i) { @store.new_block(b) }) do |blk, i|
