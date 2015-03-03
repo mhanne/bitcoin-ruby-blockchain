@@ -16,19 +16,24 @@ module Bitcoin::Blockchain::Backends
     attr_accessor :db
 
     DEFAULT_CONFIG = {
+
       # cache head block; it is only updated when new block comes in,
       # so this should only be used by the store receiving new blocks.
       cache_head: false,
+
       # cache this many utxo records before syncing to disk.
       # this should only be enabled during initial sync, because
       # with it the store cannot reorg properly.
       utxo_cache: 250,
+
       # cache this many blocks.
       # NOTE: this is also the maximum number of blocks the store can reorg.
       block_cache: 120,
+
       # keep an index of utxos for all addresses, not just the ones
       # we are explicitly told about.
       index_all_addrs: false
+
     }
 
     # create sequel store with given +config+
@@ -159,7 +164,7 @@ module Bitcoin::Blockchain::Backends
 
     def flush_new_outs
       log.time "flushed #{@new_outs.size} new txouts in %.4fs" do
-        new_utxo_ids = @db[:utxo].insert_multiple(@new_outs.map{|o|o[0]})
+        new_utxo_ids = fast_insert :utxo, @new_outs.map(&:first), return_ids: true
         @new_outs.each.with_index do |d, idx|
           d[1].each do |i, hash160|
             next  unless i && hash160

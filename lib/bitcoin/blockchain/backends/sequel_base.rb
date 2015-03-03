@@ -89,6 +89,49 @@ module Bitcoin::Blockchain::Backends
         size
       end
 
+
+      protected
+
+      # Abstraction for doing many quick inserts.
+      #
+      # * +table+ - db table name
+      # * +data+ - a table of hashes with the same keys
+      # * +opts+
+      # ** return_ids - if true table of inserted rows ids will be returned
+      def fast_insert(table, data, opts={})
+        return [] if data.empty?
+        # For postgres we are using COPY which is much faster than separate INSERTs
+        if @db.adapter_scheme == :postgres
+
+          columns = data.first.keys
+          if opts[:return_ids]
+            ids = db.transaction do
+              # COPY does not return ids, so we set ids manually based on current sequence value
+              # We lock the table to avoid inserts that could happen in the middle of COPY
+              db.execute("LOCK TABLE #{table} IN SHARE UPDATE EXCLUSIVE MODE")
+              first_id = db.fetch("SELECT nextval('#{table}_id_seq') AS id").first[:id]
+
+              # Blobs need to be represented in the hex form (yes, we do hth on them earlier, could be improved
+              # \\x is the format of bytea as hex encoding in postgres
+              csv = data.map.with_index{|x,i| [first_id + i, columns.map{|c| x[c].kind_of?(Sequel::SQL::Blob) ? "\\x#{x[c].hth}" : x[c]}].join(',')}.join("\n")
+              db.copy_into(table, columns: [:id] + columns, format: :csv, data: csv)
+              last_id = first_id + data.size - 1
+
+              # Set sequence value to max id, last arg true means it will be incremented before next value
+              db.execute("SELECT setval('#{table}_id_seq', #{last_id}, true)")
+              (first_id..last_id).to_a # returned ids
+            end
+          else
+            csv = data.map{|x| columns.map{|c| x[c].kind_of?(Sequel::SQL::Blob) ? "\\x#{x[c].hth}" : x[c]}.join(',')}.join("\n")
+            @db.copy_into(table, format: :csv, columns: columns, data: csv)
+          end
+
+        else
+          # Life is simple when you are not optimizing ;)
+          @db[table].insert_multiple(data)
+        end
+      end
+
     end
 
 end
