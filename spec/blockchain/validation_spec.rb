@@ -239,8 +239,13 @@ describe "transaction rules (#{options[0]} - #{options[1]})" do
       tx.out[0].value = Bitcoin::network[:max_money] + 1 }
   end
 
+  it "check that there are no duplicate inputs" do
+    check_tx(@tx, [:duplicate_inputs, [0, 1]]) {|tx|
+      tx.in << tx.in.first }
+  end
+
   it "5. Make sure none of the inputs have hash=0, n=-1" do
-    check_tx(@tx, [:inputs, [0]]) do |tx|
+    check_tx(@tx, [:coinbase_input, [0]]) do |tx|
       tx.in.first.prev_out = "\x00"*32
       tx.in.first.prev_out_index = 4294967295
     end

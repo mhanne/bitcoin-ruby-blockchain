@@ -15,6 +15,22 @@ module Bitcoin::Blockchain::Validation
   class ValidationError < StandardError
   end
 
+  module ArrayExtensions
+
+    refine Array do
+
+      # returns nil if the array is empty, otherwise the array itself
+      def or_nil; any? ? self : nil; end
+
+      # find all duplicates in the array and return their indices
+      def duplicates
+        map.with_index {|e, i| i  if count(e) > 1 }
+      end
+
+    end
+  end
+
+  using ArrayExtensions
 
   class Block
     attr_accessor :block, :store, :prev_block, :error
@@ -233,7 +249,7 @@ module Bitcoin::Blockchain::Validation
     attr_accessor :tx, :store, :error, :block_validator
 
     RULES = {
-      syntax: [:hash, :lists, :max_size, :output_values, :inputs, :lock_time, :standard],
+      syntax: [:hash, :lists, :max_size, :output_values, :duplicate_inputs, :coinbase_input, :lock_time, :standard],
       context: [:prev_out, :signatures, :not_spent, :input_values, :output_sum]
     }
 
@@ -298,9 +314,14 @@ module Bitcoin::Blockchain::Validation
       total <= Bitcoin::network[:max_money] || [total, Bitcoin::network[:max_money]]
     end
 
+    # check that there are no duplicate inputs (referencing the same output)
+    def duplicate_inputs
+      tx.in.map {|i| [i.prev_out_hash, i.prev_out_index] }.duplicates.or_nil || true
+    end
+
     # check that none of the inputs is coinbase
-    # (coinbase tx do not get validated)
-    def inputs
+    # (coinbase tx do not get validated inside a block, and can't appear outside of one)
+    def coinbase_input
       tx.inputs.none?(&:coinbase?) || [tx.inputs.index(tx.inputs.find(&:coinbase?))]
     end
 
