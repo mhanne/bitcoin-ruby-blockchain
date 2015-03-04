@@ -229,6 +229,11 @@ describe "transaction rules (#{options[0]} - #{options[1]})" do
     Bitcoin::MAX_BLOCK_SIZE = max
   end
 
+  it "check that output value is not negative" do
+    check_tx(@tx, [:output_values, [-1, 0]]) {|tx|
+      tx.out[0].value = -1 }
+  end
+
   it "4. Each output value, as well as the total, must be in legal money range" do
     check_tx(@tx, [:output_values, [Bitcoin::network[:max_money] + 1, Bitcoin::network[:max_money]]]) {|tx|
       tx.out[0].value = Bitcoin::network[:max_money] + 1 }

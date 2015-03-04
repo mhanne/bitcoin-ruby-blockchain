@@ -290,8 +290,10 @@ module Bitcoin::Blockchain::Validation
       tx.to_payload.bytesize <= Bitcoin::MAX_BLOCK_SIZE || [tx.to_payload.bytesize, Bitcoin::MAX_BLOCK_SIZE]
     end
 
-    # check that total output value doesn't exceed MAX_MONEY.
+    # check that no output value is negative and total value doesn't exceed MAX_MONEY.
     def output_values
+      tx.out.each {|o| return [o.value, 0]  if o.value < 0 }
+
       total = tx.out.inject(0) {|e, out| e + out.value }
       total <= Bitcoin::network[:max_money] || [total, Bitcoin::network[:max_money]]
     end
