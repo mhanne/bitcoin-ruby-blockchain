@@ -12,10 +12,13 @@ gem 'sqlite3'
 gem 'pg'
 gem 'mysql'
 
+gem 'log4r', require: 'log4r'
+
 group :development do
   gem 'rake'
   gem 'yard'
+  gem 'minitest'
   gem 'rspec'
   gem 'simplecov'
-  gem 'pry-byebug'
+  gem 'pry'
 end
