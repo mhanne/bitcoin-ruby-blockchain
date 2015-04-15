@@ -17,7 +17,11 @@ module Bitcoin::Blockchain::Backends
       cache_head: false,
 
       # store an index of tx.nhash values
-      index_nhash: false
+      index_nhash: false,
+
+      # keep an index of addresses and associated txouts
+      index_addresses: true,
+
     }
 
     # create sequel store with given +config+
@@ -93,7 +97,7 @@ module Bitcoin::Blockchain::Backends
               txout_data(new_tx_ids[tx_idx], txout, txout_idx, script_type) } }.flatten, return_ids: true)
 
           # store addrs
-          persist_addrs addrs.map {|i, addr| [txout_ids[i], addr]}
+          persist_addrs addrs.map {|i, addr| [txout_ids[i], addr]}  if @config[:index_addresses]
           names.each {|i, script| store_name(script, txout_ids[i]) }
         end
         @head = wrap_block(attrs.merge(id: block_id))  if chain == MAIN
