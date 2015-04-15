@@ -227,9 +227,26 @@ Bitcoin.network = :testnet
 
   it "should reconnect orphans" do
     next(true.should == true)  if @store.class.name =~ /Utxo/
-    blocks = [@block0]
-    3.times { blocks << create_block(blocks.last.hash, false) }
 
+    blocks = [@block0]
+    3.times do
+      # create a block spending the last tx of the previous block
+      block = create_block(blocks.last.hash, false, [->(tx) {
+        create_tx(tx, blocks.last.tx.last, 0, [[12345, @key]]) }])
+
+      # add a second tx, spending the first one in the same block
+      block.tx << build_tx do |t|
+        t.input {|i| i.prev_out(block.tx.last, 0); i.signature_key @key }
+        t.output {|o| o.value 12345; o.to @key.addr }
+      end
+
+      # fix mrkl_root and block hash after new tx was added manually
+      block.mrkl_root = block.recalc_mrkl_root
+      block.hash = block.recalc_block_hash
+      blocks << block
+    end
+
+    # for each order, check for correct head after each block was stored
     {
       [0, 1, 2, 3] => [0, 1, 2, 3],
       [0, 1, 3, 2] => [0, 1, 1, 3],
@@ -244,6 +261,7 @@ Bitcoin.network = :testnet
       end
     end
 
+    # iterate through each permutation and make sure the resulting head is correct
     i = 3; (0..i).to_a.permutation.each do |order|
       @store.reset
       order.each {|n| @store.store_block(blocks[n]) }

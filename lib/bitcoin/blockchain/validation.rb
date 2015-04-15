@@ -405,7 +405,7 @@ module Bitcoin::Blockchain::Validation
       @prev_txs ||= tx.in.map {|i|
         prev_tx = block_validator ? block_validator.prev_txs_hash[i.prev_out_hash.reverse_hth] : store.tx(i.prev_out_hash.reverse_hth)
         next prev_tx if prev_tx && prev_tx.blk_id # blk_id is set only if it's in the main chain
-        @block.tx.find {|t| t.binary_hash == i.prev_out } if @block
+        @block.tx.find {|t| t.binary_hash == i.prev_out_hash } if @block
       }.compact
     end
 
