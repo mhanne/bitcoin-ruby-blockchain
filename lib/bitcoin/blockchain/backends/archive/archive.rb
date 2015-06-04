@@ -499,7 +499,7 @@ module Bitcoin::Blockchain::Backends
 
       prev_blk = block_at_height(height - count - 1)
       (height - count).upto(height).each do |height|
-        blk = block_at_height(height)
+        raise "Block #{height} missing!"  unless blk = block_at_height(height)
         raise "Block hash #{blk.height} invalid!"  unless blk.hash == blk.recalc_block_hash
         raise "Prev hash #{blk.height} invalid!"  unless blk.prev_block_hash.reverse.hth == prev_blk.hash
         raise "Merkle root #{blk.height} invalid!"  unless blk.verify_mrkl_root
