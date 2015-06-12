@@ -179,6 +179,14 @@ module Bitcoin::Blockchain::Models
       parsed_script.type
     end
 
+    # add :with_next_in option to add a reference to the next input (if any)
+    def to_hash options = {}
+      hash = super(options)
+      if options[:with_next_in] && ni = next_in
+        hash["next_in"] = { "hash" => ni.tx.hash, "n" => ni.tx_idx }
+      end
+      hash
+    end
   end
 
 end

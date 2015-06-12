@@ -34,9 +34,6 @@ Bitcoin::network = :testnet
         @store.store_tx(P::Tx.new(fixtures_file('rawtx-01.bin')), false)
         @store.store_tx(P::Tx.new(fixtures_file('rawtx-02.bin')), false)
       end
-
-      @blk = P::Block.new(fixtures_file('testnet/block_4.bin'))
-      @tx = P::Tx.new(fixtures_file('rawtx-03.bin'))
     end
 
     after do
@@ -92,6 +89,18 @@ Bitcoin::network = :testnet
 
       it "should get fee" do
         tx.fee.should == 0
+      end
+
+      it "should amend #to_hash/#to_json with next_in" do
+        @key = Key.generate
+        block_4 = create_block @store.head.hash, true, [], @key
+        block_5 = create_block block_4.hash, true, [->(t) {
+          create_tx(t, block_4.tx.first, 0, [[50, @key]]) }], @key
+
+        tx = @store.block_at_height(4).tx.first
+        tx.to_hash(with_next_in: true)["out"].first.should == { "value" => "50.00000000",
+          "scriptPubKey" => "OP_DUP OP_HASH160 #{@key.hash160} OP_EQUALVERIFY OP_CHECKSIG",
+          "next_in" => { "hash" => block_5.tx.last.hash, "n" => 0 } }
       end
 
     end
