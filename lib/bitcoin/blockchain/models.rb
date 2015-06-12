@@ -52,6 +52,15 @@ module Bitcoin::Blockchain::Models
 
     def depth; @height; end
 
+    # add :with_next_block option to add a reference to the next block (if any)
+    def to_hash options = {}
+      hash = super(options)
+      if options[:with_next_block] && nb = next_block
+        hash["next_block"] = nb.hash
+      end
+      hash
+    end
+
   end
 
   # Transaction retrieved from storage. (extends {Bitcoin::Protocol::Tx})

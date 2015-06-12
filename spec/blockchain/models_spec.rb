@@ -65,6 +65,13 @@ Bitcoin::network = :testnet
         block.total_fee.should == 0
       end
 
+      it "should amend #to_hash/#to_json with next_in" do
+        hash = @store.block_at_height(2).to_hash(with_next_block: true)
+        hash["next_block"].should == @store.block_at_height(3).hash
+        hash = @store.block_at_height(3).to_hash(with_next_block: true)
+        hash["next_block"].should == nil
+      end
+
     end
 
     describe "Tx" do
