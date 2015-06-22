@@ -206,7 +206,7 @@ class Bitcoin::Blockchain::Mempool
   # add +tx+ to the mempool. returns the mempool id or nil if the tx isn't valid
   # if the tx is a doublespend, it will be stored anyway, and the tx that is being
   # doublespent marked as such.
-  def add tx
+  def add tx, skip_validation = false
     start_time = Time.now
     if existing = transactions[hash: tx.hash.htb.blob]
       # if tx already exists, update times_seen and updated_at values
@@ -215,7 +215,11 @@ class Bitcoin::Blockchain::Mempool
       return existing[:id]
     end
 
-    result, prev_txs, error = *validate(tx)
+    if skip_validation
+      result, prev_txs, error = true, [], nil
+    else
+      result, prev_txs, error = *validate(tx)
+    end
     if result
       new_tx_id, priority = save_tx(tx, :accepted, prev_txs)
       log.info { "Accepted #{tx.hash} in %.4fs (priority: #{priority})." % (Time.now - start_time) }
