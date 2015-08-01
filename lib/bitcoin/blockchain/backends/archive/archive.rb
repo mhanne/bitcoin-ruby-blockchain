@@ -359,8 +359,10 @@ module Bitcoin::Blockchain::Backends
       # sqlite can't handle expression trees > 1000
       return super(txouts) if @db.adapter_scheme == :sqlite  && txouts.size > 1000
 
-      @db[:txin].filter([:prev_out, :prev_out_index] => txouts.map{|tx_hash, tx_idx|
+      txouts.each_slice(1000).map do |txouts|
+        @db[:txin].filter([:prev_out, :prev_out_index] => txouts.map{|tx_hash, tx_idx|
           [tx_hash.htb_reverse.blob, tx_idx] }).map{|i| wrap_txin(i) }
+      end.flatten
     end
     alias :get_txins_for_txouts :txins_for_txouts
 
