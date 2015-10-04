@@ -41,7 +41,7 @@ def setup_db backend, db = nil, conf = {}
 end
 
 def close_db store
-  store.db.disconnect
+  store.db.disconnect  if store && store.db
 end
 
 def destroy_db db, uri, conf
