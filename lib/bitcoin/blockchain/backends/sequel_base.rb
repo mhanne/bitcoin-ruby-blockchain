@@ -22,8 +22,6 @@ module Bitcoin::Blockchain::Backends
         return  unless (self.is_a?(Archive) || self.is_a?(Utxo)) && @config[:db]
         @config[:db].sub!("~", ENV["HOME"])
         @config[:db].sub!("<network>", Bitcoin.network_name.to_s)
-        adapter = SEQUEL_ADAPTERS[@config[:db].split(":").first] rescue nil
-        Bitcoin.require_dependency(adapter, gem: adapter)  if adapter
         connect
       end
 
