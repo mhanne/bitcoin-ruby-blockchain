@@ -10,7 +10,9 @@ rvm:
 before_script:
   - psql -c 'create database travis;' -U postgres
   - psql -c 'create database bitcoin_test;' -U postgres
-  - mysql -e 'create database bitcoin_test;'
+#  - mysql -e 'create database bitcoin_test;'
 
 env:
-  - TEST_DB_POSTGRES="postgres://postgres@localhost/bitcoin_test" TEST_DB_MYSQL="mysql:/root:@localhost/bitcoin_test"
+  - TEST_DB_POSTGRES="postgres://postgres@localhost/bitcoin_test"
+#  - TEST_DB_MYSQL="mysql://root@localhost/bitcoin_test"
+

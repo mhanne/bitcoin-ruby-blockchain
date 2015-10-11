@@ -49,14 +49,12 @@ def destroy_db db, uri, conf
   when :sqlite
     FileUtils.rm_rf("spec/tmp/#{conf[:db]}.db")  if conf[:db]
   when :postgres
-    db_name = uri.split("/").last
-    port = uri.split("/")[-2].scan(/\:(\d+)$/)[0]
-    port = port[0].to_i  if port
-    `echo 'DROP DATABASE #{db_name}; CREATE DATABASE #{db_name};' | psql #{port ? "-p #{port}" : ""}`
+    u = URI.parse(uri); db_name = u.path[1..-1]
+    `echo 'DROP DATABASE #{db_name}; CREATE DATABASE #{db_name};' | psql #{u.port ? "-p '#{u.port}'" : ""}`
   when :mysql
-    db_name = uri.split("/").last
-    user, pass = uri.split("/")[-2].scan(/(.*?)\:(.*?)\@.*?/)[0]
-    `echo 'DROP DATABASE #{db_name}; CREATE DATABASE #{db_name};' | mysql #{user ? "-u#{user}" : ""} #{pass ? "-p#{pass}": ""}`
+    u = URI.parse(uri); db_name = u.path[1..-1]
+    `echo 'DROP DATABASE #{db_name}; CREATE DATABASE #{db_name};' | mysql #{u.user ? "-u'#{u.user}'" : ""} #{u.password ? "-p'#{u.password}'": ""}`
+    # Note: mysql command parsing does not allow for a space between '-p' and the password, it will ask for a password
   end
 end
 
