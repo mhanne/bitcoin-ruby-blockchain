@@ -1,16 +1,22 @@
 language: ruby
+cache: bundler
 
 rvm:
-  - 2.1.1
-  - 2.1.5
-  - 2.2.0
+#  - 2.1.1
+#  - 2.1.5
+#  - 2.2.0
   - 2.2.2
-  - 2.2.3
+#  - 2.2.3
+
+#addons:
+#  mariadb: '10.0'
 
 before_script:
   - psql -c 'create database travis;' -U postgres
   - psql -c 'create database bitcoin_test;' -U postgres
   - mysql -e 'create database bitcoin_test;'
+  - mysql --version
 
 env:
-  - TEST_DB_POSTGRES="postgres://postgres@localhost/bitcoin_test" TEST_DB_MYSQL="mysql:/root:@localhost/bitcoin_test"
+  - TEST_DB_MYSQL="mysql://root@localhost/bitcoin_test"
+  #  - TEST_DB_POSTGRES="postgres://postgres@localhost/bitcoin_test"

@@ -1,0 +1,67 @@
+GIT
+  remote: git://github.com/mhanne/bitcoin-ruby
+  revision: fdf124f43700dfb1db6c3b180d91fa2f3805debd
+  branch: next
+  specs:
+    bitcoin-ruby (0.0.8)
+
+GEM
+  remote: http://rubygems.org/
+  specs:
+    coderay (1.1.0)
+    diff-lcs (1.2.5)
+    docile (1.1.5)
+    eventmachine (1.0.8)
+    ffi (1.9.10)
+    json (1.8.3)
+    log4r (1.1.10)
+    method_source (0.8.2)
+    minitest (5.8.1)
+    mysql (2.9.1)
+    pg (0.18.3)
+    pry (0.10.2)
+      coderay (~> 1.1.0)
+      method_source (~> 0.8.1)
+      slop (~> 3.4)
+    rake (10.4.2)
+    rspec (3.3.0)
+      rspec-core (~> 3.3.0)
+      rspec-expectations (~> 3.3.0)
+      rspec-mocks (~> 3.3.0)
+    rspec-core (3.3.2)
+      rspec-support (~> 3.3.0)
+    rspec-expectations (3.3.1)
+      diff-lcs (>= 1.2.0, < 2.0)
+      rspec-support (~> 3.3.0)
+    rspec-mocks (3.3.2)
+      diff-lcs (>= 1.2.0, < 2.0)
+      rspec-support (~> 3.3.0)
+    rspec-support (3.3.0)
+    sequel (4.27.0)
+    simplecov (0.10.0)
+      docile (~> 1.1.0)
+      json (~> 1.8)
+      simplecov-html (~> 0.10.0)
+    simplecov-html (0.10.0)
+    slop (3.6.0)
+    sqlite3 (1.3.10)
+    yard (0.8.7.6)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  bitcoin-ruby!
+  eventmachine
+  ffi
+  log4r
+  minitest
+  mysql
+  pg
+  pry
+  rake
+  rspec
+  sequel
+  simplecov
+  sqlite3
+  yard

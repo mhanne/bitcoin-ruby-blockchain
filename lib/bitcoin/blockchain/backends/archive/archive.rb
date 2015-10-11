@@ -255,6 +255,10 @@ module Bitcoin::Blockchain::Backends
 
     # get head block (highest block from the MAIN chain)
     def head
+      p((@config[:cache_head] && @head) ? :head_cached : :head_from_db)
+      b = @db[:blk].filter(chain: MAIN).order(:height).last
+      p b[:hash]
+      p b[:hash].hth
       (@config[:cache_head] && @head) ? @head :
         @head = wrap_block(@db[:blk].filter(chain: MAIN).order(:height).last)
     end

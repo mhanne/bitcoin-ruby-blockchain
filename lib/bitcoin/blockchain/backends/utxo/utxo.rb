@@ -328,7 +328,7 @@ module Bitcoin::Blockchain::Backends
       data = { id: block[:id], height: block[:height], chain: block[:chain],
         work: block[:work].to_i, hash: block[:hash].hth }
       blk = Bitcoin::Blockchain::Models::Block.new(self, data)
-
+      
       blk.ver = block[:version]
       blk.prev_block = block[:prev_hash].reverse
       blk.mrkl_root = block[:mrkl_root].reverse

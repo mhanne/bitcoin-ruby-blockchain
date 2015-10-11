@@ -28,6 +28,11 @@ Bitcoin::network = :testnet
       skip  unless @store = setup_db(*options)
       def @store.in_sync?; true; end
       @store.store_block(P::Block.new(fixtures_file('testnet/block_0.bin')))
+
+      p [:height, @store.height]
+      p [:head, @store.head.hash]
+      
+
       @store.store_block(P::Block.new(fixtures_file('testnet/block_1.bin')))
       @store.store_block(P::Block.new(fixtures_file('testnet/block_2.bin')))
       @store.store_block(P::Block.new(fixtures_file('testnet/block_3.bin')))
