@@ -359,7 +359,9 @@ module Bitcoin::Blockchain::Validation
 
     # check that all input signatures are valid
     def signatures
-      sigs = tx.in.map.with_index {|txin, idx| tx.verify_input_signature(idx, prev_txs[idx], (@block ? @block.time : 0)) }
+      sigs = tx.in.map.with_index do |txin, idx|
+        tx.verify_input_signature(idx, prev_txs[idx], (@block ? @block.time : 0))
+      end
       sigs.all? || sigs.map.with_index {|s, i| s ? nil : i }.compact
     end
 
@@ -425,7 +427,7 @@ module Bitcoin::Protocol
   class Block
     # Get a Bitcoin::Blockchain::Validation object to validate this block. It needs a +store+
     # to validate against, and optionally takes the +prev_block+ for optimization.
-    def validator(store, prev_block = nil)
+    def validator(store = nil, prev_block = nil)
       @validator ||= Bitcoin::Blockchain::Validation::Block.new(self, store, prev_block)
     end
   end
@@ -434,7 +436,7 @@ module Bitcoin::Protocol
     # Get a Bitcoin::Validation object to validate this block. It needs a +store+
     # to validate against, a block to validate tx chains inside one block, and
     # optionally takes the +block_validator+ as an optimization.
-    def validator(store, block = nil, block_validator = nil)
+    def validator(store = nil, block = nil, block_validator = nil)
       @validator ||= Bitcoin::Blockchain::Validation::Tx.new(self, store, block, block_validator)
     end
   end

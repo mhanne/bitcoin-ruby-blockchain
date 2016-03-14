@@ -6,6 +6,9 @@ include Bitcoin::Builder
 include Bitcoin::Blockchain
 include Bitcoin::Blockchain::Validation
 
+
+
+
 Bitcoin.network = :regtest
 
 [
@@ -235,8 +238,11 @@ describe "transaction rules (#{options[0]} - #{options[1]})" do
   end
 
   it "4. Each output value, as well as the total, must be in legal money range" do
-    check_tx(@tx, [:output_values, [Bitcoin::network[:max_money] + 1, Bitcoin::network[:max_money]]]) {|tx|
-      tx.out[0].value = Bitcoin::network[:max_money] + 1 }
+    check_tx(@tx, [:output_values, [-1, 0]]) {|tx| tx.out[0].value = -1 }
+
+    max = Bitcoin.network[:max_money]
+    check_tx(@tx, [:output_values, [max + 1, max]]) {|tx|
+      tx.out[0].value = max + 1 }
   end
 
   it "check that there are no duplicate inputs" do
@@ -249,6 +255,10 @@ describe "transaction rules (#{options[0]} - #{options[1]})" do
       tx.in.first.prev_out = "\x00"*32
       tx.in.first.prev_out_index = 4294967295
     end
+  end
+
+  it "no duplicate inputs" do
+    check_tx(@tx, [:duplicate_inputs, [0, 1]]) {|tx| tx.in << tx.in[0] }
   end
 
   it "6. Check that nLockTime <= UINT32_MAX, size in bytes >= 100, and sig opcount <= 2" do
