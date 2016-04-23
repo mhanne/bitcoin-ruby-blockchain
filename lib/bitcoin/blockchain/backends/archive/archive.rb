@@ -244,8 +244,8 @@ module Bitcoin::Blockchain::Backends
     end
 
     # check if block +blk_hash+ exists in the main chain
-    def has_block(blk_hash)
-      !!@db[:blk].where(hash: blk_hash.htb.blob, chain: MAIN).get(1)
+    def has_block(blk_hash, chain = MAIN)
+      !!@db[:blk].where(hash: blk_hash.htb.blob, chain: chain).get(1)
     end
 
     # check if transaction +tx_hash+ exists
@@ -280,14 +280,14 @@ module Bitcoin::Blockchain::Backends
     alias :get_block :block
 
     # get block by given +height+
-    def block_at_height(height)
-      wrap_block(@db[:blk][height: height, chain: MAIN])
+    def block_at_height(height, chain = MAIN)
+      wrap_block(@db[:blk][height: height, chain: chain])
     end
     alias :get_block_by_depth :block_at_height
 
     # get block by given +prev_hash+
-    def block_by_prev_hash(prev_hash)
-      wrap_block(@db[:blk][prev_hash: prev_hash.htb.blob, chain: MAIN])
+    def block_by_prev_hash(prev_hash, chain = MAIN)
+      wrap_block(@db[:blk][prev_hash: prev_hash.htb.blob, chain: chain])
     end
     alias :block_by_prev_hash :block_by_prev_hash
 

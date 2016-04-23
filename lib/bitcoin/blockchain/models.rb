@@ -33,8 +33,8 @@ module Bitcoin::Blockchain::Models
     alias :get_prev_block :prev_block
 
     # get the block that builds upon this one
-    def next_block
-      @store.block_by_prev_hash(@hash)
+    def next_block(chain = 0)
+      @store.block_by_prev_hash(@hash, chain)
     end
     alias :get_next_block :next_block
 
