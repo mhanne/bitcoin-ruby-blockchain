@@ -5,7 +5,6 @@ require_relative '../spec_helper'
 include Bitcoin
 include Bitcoin::Blockchain
 
-Bitcoin::network = :testnet
 [
   [:dummy],
   [:archive, :sqlite],
@@ -19,6 +18,7 @@ Bitcoin::network = :testnet
   describe "Blockchain::Models (#{options[0].to_s.capitalize}Store, #{options[1]})" do
 
     before do
+      Bitcoin::network = :testnet
       Bitcoin.network[:no_difficulty] = true
       Bitcoin.network[:proof_of_work_limit] = Bitcoin.encode_compact_bits("ff"*32)
 
